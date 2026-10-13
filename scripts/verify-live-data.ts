@@ -44,6 +44,8 @@ globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
 
 import { splitBasmala } from "../src/lib/quranText";
 import {
+  RECITERS,
+  ayahAudioUrl,
   fetchSurahArabic,
   fetchSurahTranslation,
   searchQuran,
@@ -150,6 +152,26 @@ await sleep(120);
 const none = await searchQuran("zzqqxyzzy123");
 check(Array.isArray(none) && none.length === 0, "No-match search should return an empty array");
 console.log(`Search verified (English: ${en.length} matches for "mercy", Arabic: ${ar.length} for "الرحمن", no-match: ${none.length}).`);
+
+// Verse audio: every advertised reciter must serve the URLs we build, at the
+// start, middle and end of the Qur'an (bitrates differ per reciter — the
+// client hardcodes the verified one for each).
+console.log("Verifying verse-audio URLs for every reciter…");
+for (const reciter of RECITERS) {
+  for (const g of [1, 262, 3672, 6236]) {
+    const url = ayahAudioUrl(g, reciter.id);
+    try {
+      const head = await fetch(url, { method: "HEAD" });
+      check(head.status === 200, `audio ${reciter.id} ayah ${g}: HTTP ${head.status} (${url})`);
+    } catch (err) {
+      check(false, `audio ${reciter.id} ayah ${g}: ${err}`);
+    }
+    await sleep(60);
+  }
+}
+console.log(
+  `Audio verified: ${RECITERS.length} reciters × 4 sample ayahs (${RECITERS.map((r) => `${r.id}@${r.bitrate}k`).join(", ")}).`,
+);
 
 if (failures > 0) {
   console.error(`\n${failures} check(s) FAILED`);

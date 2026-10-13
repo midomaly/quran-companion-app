@@ -84,7 +84,9 @@ export default function Reader() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
+  // Progress is written straight to the DOM on timeupdate: React state here
+  // would re-render every ayah row several times a second during recitation.
+  const progressBarRef = useRef<HTMLDivElement | null>(null);
   const [repeat, setRepeat] = useState(false);
   const [speedIndex, setSpeedIndex] = useState(0);
 
@@ -205,6 +207,10 @@ export default function Reader() {
   /* ---------------------------------------------------------------- */
   /* Audio playback                                                    */
   /* ---------------------------------------------------------------- */
+  const resetProgressBar = () => {
+    if (progressBarRef.current) progressBarRef.current.style.width = "0%";
+  };
+
   const playAyah = useCallback(
     (n: number) => {
       const audio = audioRef.current;
@@ -271,7 +277,7 @@ export default function Reader() {
       playAyah(playing + 1);
     } else {
       setIsPlaying(false);
-      setProgress(0);
+      resetProgressBar();
     }
   }, [arabic, playing, repeat, settings.continuousPlayback, playAyah]);
 
@@ -288,7 +294,7 @@ export default function Reader() {
     }
     setPlaying(null);
     setIsPlaying(false);
-    setProgress(0);
+    resetProgressBar();
   };
 
   const stepAyah = (delta: number) => {
@@ -670,7 +676,10 @@ export default function Reader() {
         ref={audioRef}
         onTimeUpdate={(e) => {
           const el = e.currentTarget;
-          setProgress(el.duration ? el.currentTime / el.duration : 0);
+          if (progressBarRef.current) {
+            const fraction = el.duration ? el.currentTime / el.duration : 0;
+            progressBarRef.current.style.width = `${Math.round(fraction * 100)}%`;
+          }
         }}
         onEnded={handleEnded}
         onError={handleAudioError}
@@ -757,8 +766,8 @@ export default function Reader() {
               </div>
               <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-muted">
                 <div
+                  ref={progressBarRef}
                   className="h-full rounded-full bg-primary transition-[width] duration-200"
-                  style={{ width: `${Math.round(progress * 100)}%` }}
                 />
               </div>
             </div>

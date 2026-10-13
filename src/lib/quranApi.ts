@@ -19,7 +19,7 @@
 import { isValidSurah } from "./surahs";
 
 const API_BASE = "https://api.alquran.cloud/v1";
-const AUDIO_BASE = "https://cdn.islamic.network/quran/audio/128";
+const AUDIO_BASE = "https://cdn.islamic.network/quran/audio";
 const REQUEST_TIMEOUT_MS = 15000;
 
 const CACHE_AR_PREFIX = "noor:ar:";
@@ -58,17 +58,25 @@ export function errorMessage(err: unknown): string {
 export interface Reciter {
   id: string;
   name: string;
+  /** Bitrate this reciter's files exist at on the CDN (verified — NOT uniform). */
+  bitrate: number;
 }
 
-/** Verified verse-by-verse reciters available on the audio CDN (names as listed by the source). */
+/**
+ * Verified verse-by-verse reciters. Each reciter's bitrate and name were
+ * verified against the source's own per-ayah response
+ * (https://api.alquran.cloud/v1/ayah/{g}/{id} → audio URL) and by HEAD
+ * requests across early/middle/final ayahs. Do not assume 128 kbps works
+ * for every reciter — it does not.
+ */
 export const RECITERS: Reciter[] = [
-  { id: "ar.alafasy", name: "Alafasy" },
-  { id: "ar.husary", name: "Husary" },
-  { id: "ar.husarymujawwad", name: "Husary (Mujawwad)" },
-  { id: "ar.abdurrahmaansudais", name: "Abdurrahmaan As-Sudais" },
-  { id: "ar.mahermuaiqly", name: "Maher Al Muaiqly" },
-  { id: "ar.saoodshuraym", name: "Saood bin Ibraaheem Ash-Shuraym" },
-  { id: "ar.abdullahbasfar", name: "Abdullah Basfar" },
+  { id: "ar.alafasy", name: "Alafasy", bitrate: 128 },
+  { id: "ar.husary", name: "Husary", bitrate: 128 },
+  { id: "ar.husarymujawwad", name: "Husary (Mujawwad)", bitrate: 128 },
+  { id: "ar.abdurrahmaansudais", name: "Abdurrahmaan As-Sudais", bitrate: 192 },
+  { id: "ar.mahermuaiqly", name: "Maher Al Muaiqly", bitrate: 128 },
+  { id: "ar.saoodshuraym", name: "Saood bin Ibraaheem Ash-Shuraym", bitrate: 64 },
+  { id: "ar.abdullahbasfar", name: "Abdullah Basfar", bitrate: 192 },
 ];
 
 export function reciterName(id: string): string {
@@ -81,7 +89,9 @@ export function isKnownReciter(id: string): boolean {
 
 /** Direct streaming URL for one ayah (global ayah number numbering, 1..6236). */
 export function ayahAudioUrl(globalAyah: number, reciterId: string): string {
-  return `${AUDIO_BASE}/${reciterId}/${globalAyah}.mp3`;
+  const reciter = RECITERS.find((r) => r.id === reciterId);
+  const bitrate = reciter?.bitrate ?? 128;
+  return `${AUDIO_BASE}/${bitrate}/${reciterId}/${globalAyah}.mp3`;
 }
 
 /* ------------------------------------------------------------------ */

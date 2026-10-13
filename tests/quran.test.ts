@@ -228,6 +228,18 @@ describe("audio helpers", () => {
     );
   });
 
+  test("uses each reciter's verified bitrate (CDN files are not uniform)", () => {
+    expect(ayahAudioUrl(262, "ar.saoodshuraym")).toBe(
+      "https://cdn.islamic.network/quran/audio/64/ar.saoodshuraym/262.mp3",
+    );
+    expect(ayahAudioUrl(1, "ar.abdurrahmaansudais")).toBe(
+      "https://cdn.islamic.network/quran/audio/192/ar.abdurrahmaansudais/1.mp3",
+    );
+    expect(ayahAudioUrl(6236, "ar.abdullahbasfar")).toBe(
+      "https://cdn.islamic.network/quran/audio/192/ar.abdullahbasfar/6236.mp3",
+    );
+  });
+
   test("reciters have unique ids and display names", () => {
     expect(RECITERS.length).toBeGreaterThanOrEqual(5);
     const ids = new Set(RECITERS.map((r) => r.id));
@@ -235,6 +247,7 @@ describe("audio helpers", () => {
     for (const r of RECITERS) {
       expect(r.name.length).toBeGreaterThan(0);
       expect(reciterName(r.id)).toBe(r.name);
+      expect([32, 40, 48, 64, 128, 192]).toContain(r.bitrate);
     }
     expect(reciterName("unknown-id")).toBe("unknown-id");
   });

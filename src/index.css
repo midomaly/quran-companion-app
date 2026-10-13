@@ -1,0 +1,201 @@
+/* DO NOT CHANGE */
+@import "tailwindcss";
+@import "tw-animate-css";
+@custom-variant dark (&:is(.dark *));
+
+/* DO NOT CHANGE */
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  /* Noor Al-Islam brand tokens */
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-brand-900: var(--brand-900);
+  --color-brand-800: var(--brand-800);
+  --color-brand-700: var(--brand-700);
+}
+
+/* Brand fonts: Amiri Quran for scripture, Amiri for Arabic UI, Plus Jakarta Sans for Latin */
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-quran: "Amiri Quran", "Amiri", "Scheherazade New", "Traditional Arabic", serif;
+  --font-arabic: "Amiri", "Amiri Quran", "Scheherazade New", serif;
+}
+
+/* CHANGE VALUES FOR THEME */
+:root {
+  --radius: 0.75rem;
+  /* Light: warm ivory paper, deep emerald ink */
+  --background: oklch(0.988 0.004 95);
+  --foreground: oklch(0.24 0.024 165);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.024 165);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.024 165);
+  --primary: oklch(0.43 0.105 165);
+  --primary-foreground: oklch(0.99 0.005 95);
+  --secondary: oklch(0.958 0.014 155);
+  --secondary-foreground: oklch(0.33 0.06 165);
+  --muted: oklch(0.965 0.006 95);
+  --muted-foreground: oklch(0.5 0.028 165);
+  --accent: oklch(0.955 0.03 85);
+  --accent-foreground: oklch(0.37 0.06 80);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.918 0.008 95);
+  --input: oklch(0.918 0.008 95);
+  --ring: oklch(0.5 0.095 165);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.988 0.004 95);
+  --sidebar-foreground: oklch(0.24 0.024 165);
+  --sidebar-primary: oklch(0.43 0.105 165);
+  --sidebar-primary-foreground: oklch(0.99 0.005 95);
+  --sidebar-accent: oklch(0.955 0.014 95);
+  --sidebar-accent-foreground: oklch(0.33 0.06 165);
+  --sidebar-border: oklch(0.918 0.008 95);
+  --sidebar-ring: oklch(0.5 0.095 165);
+  /* Brand palette (both modes) */
+  --gold: oklch(0.58 0.105 78);
+  --gold-soft: oklch(0.955 0.045 85);
+  --brand-900: oklch(0.3 0.075 165);
+  --brand-800: oklch(0.37 0.09 165);
+  --brand-700: oklch(0.43 0.105 165);
+}
+
+.dark {
+  --background: oklch(0.165 0.022 165);
+  --foreground: oklch(0.965 0.005 95);
+  --card: oklch(0.21 0.026 165);
+  --card-foreground: oklch(0.965 0.005 95);
+  --popover: oklch(0.21 0.026 165);
+  --popover-foreground: oklch(0.965 0.005 95);
+  --primary: oklch(0.75 0.115 165);
+  --primary-foreground: oklch(0.18 0.03 165);
+  --secondary: oklch(0.27 0.03 165);
+  --secondary-foreground: oklch(0.9 0.012 95);
+  --muted: oklch(0.27 0.022 165);
+  --muted-foreground: oklch(0.72 0.022 165);
+  --accent: oklch(0.3 0.05 85);
+  --accent-foreground: oklch(0.87 0.07 85);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.65 0.09 165);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.21 0.026 165);
+  --sidebar-foreground: oklch(0.965 0.005 95);
+  --sidebar-primary: oklch(0.75 0.115 165);
+  --sidebar-primary-foreground: oklch(0.18 0.03 165);
+  --sidebar-accent: oklch(0.27 0.03 165);
+  --sidebar-accent-foreground: oklch(0.9 0.012 95);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.65 0.09 165);
+  --gold: oklch(0.82 0.105 85);
+  --gold-soft: oklch(0.3 0.05 85);
+  --brand-900: oklch(0.28 0.07 165);
+  --brand-800: oklch(0.34 0.085 165);
+  --brand-700: oklch(0.43 0.105 165);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 24%, transparent);
+  }
+  button:not([disabled]),
+  [role="button"]:not([disabled]) {
+    cursor: pointer;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Subtle Islamic geometric lattice (gold diamond grid) for heroes & splash */
+.pattern-islamic {
+  background-image:
+    linear-gradient(
+      45deg,
+      transparent 47.5%,
+      rgba(214, 178, 92, 0.18) 47.5%,
+      rgba(214, 178, 92, 0.18) 52.5%,
+      transparent 52.5%
+    ),
+    linear-gradient(
+      -45deg,
+      transparent 47.5%,
+      rgba(214, 178, 92, 0.18) 47.5%,
+      rgba(214, 178, 92, 0.18) 52.5%,
+      transparent 52.5%
+    );
+  background-size: 38px 38px;
+}
+
+/* Eight-pointed star (khatim) outline used as a decorative motif */
+.pattern-star {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%23d6b25c' stroke-opacity='0.25' stroke-width='1'%3E%3Crect x='10' y='10' width='20' height='20'/%3E%3Crect x='10' y='10' width='20' height='20' transform='rotate(45 20 20)'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 40px 40px;
+}
+
+.hide-scrollbar {
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}

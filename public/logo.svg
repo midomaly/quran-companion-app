@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0b5540" />
+  <g fill="none" stroke="#d6b25c" stroke-opacity="0.35" stroke-width="6">
+    <rect x="96" y="96" width="320" height="320" rx="24" transform="rotate(45 256 256)" />
+    <rect x="128" y="128" width="256" height="256" rx="20" />
+  </g>
+  <mask id="crescent">
+    <rect width="512" height="512" fill="black" />
+    <circle cx="248" cy="264" r="128" fill="white" />
+    <circle cx="302" cy="238" r="104" fill="black" />
+  </mask>
+  <circle cx="248" cy="264" r="128" fill="#f2d791" mask="url(#crescent)" />
+  <g fill="#f2d791">
+    <path d="M356 148 l11 30 30 11 -30 11 -11 30 -11 -30 -30 -11 30 -11 z" />
+  </g>
+</svg>

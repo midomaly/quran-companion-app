@@ -12,6 +12,7 @@
       var errors = []; /* { m: message, c: isFromConsole } */
       var overlay = null;
       var booted = Date.now();
+      var mountedOk = false;
       function add(msg, isConsole) {
         if (errors.length < 8) errors.push({ m: msg, c: !!isConsole });
         try {
@@ -145,7 +146,7 @@
         var mounted = root && root.childNodes.length > 0;
         var hard = 0;
         for (var i = 0; i < errors.length; i++) if (!errors[i].c) hard++;
-        if (mounted && hard === 0) return; /* app is up — stay out of the way */
+        if (mountedOk || (mounted && hard === 0)) return; /* app is up — stay out of the way */
         probe().then(function (p) {
           var lines = statusLines();
           lines.push("-- probe --");
@@ -161,6 +162,26 @@
         });
       }
 
+      function watchRoot() {
+        var root = document.getElementById("root");
+        if (!root || !window.MutationObserver) return;
+        new MutationObserver(function () {
+          if (root.childNodes.length > 0) {
+            mountedOk = true;
+            try {
+              sessionStorage.removeItem("noor:bootRetry");
+            } catch (e) {
+              /* storage unavailable */
+            }
+            if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+          }
+        }).observe(root, { childList: true, subtree: true });
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", watchRoot);
+      } else {
+        watchRoot();
+      }
       setTimeout(report, 2600);
     })();
   </script>
@@ -205,6 +226,25 @@
         "\n\nOpen the browser console for the full stack trace.";
       (document.body || document.documentElement).appendChild(el);
     });
+    /* Watchdog: the first document load succeeds but module fetches can wedge
+       on a bad first-load connection pool. If React has not mounted after 6s,
+       reload the document with a cache-busting param (max 2 attempts) so the
+       page gets a fresh connection set. The counter resets on successful mount. */
+    try {
+      var retryN = parseInt(sessionStorage.getItem("noor:bootRetry") || "0", 10);
+      if (retryN < 2) {
+        setTimeout(function () {
+          var r = document.getElementById("root");
+          if (r && r.childNodes.length > 0) return;
+          sessionStorage.setItem("noor:bootRetry", String(retryN + 1));
+          var u = new URL(location.href);
+          u.searchParams.set("_bootretry", String(retryN + 1));
+          location.replace(u.href);
+        }, 6000);
+      }
+    } catch (e) {
+      /* storage unavailable — reporter still covers failures */
+    }
   </script>
 </body>
 

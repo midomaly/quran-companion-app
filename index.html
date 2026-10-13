@@ -2,6 +2,72 @@
 <html lang="en">
 
 <head>
+  <script>
+    /* Silent-crash reporter — this template disables Vite's full-screen error
+       overlay, so any startup crash renders a blank white page with no message.
+       Capture the first error and paint it on-screen if React never mounts. */
+    (function () {
+      var firstError = null;
+      var overlay = null;
+      function note(msg) {
+        if (firstError) return;
+        firstError = msg;
+        console.error("[Noor Al-Islam] startup error:", msg);
+      }
+      window.addEventListener(
+        "error",
+        function (e) {
+          var t = e.target;
+          if (t && t !== window && t.tagName && t.tagName !== "HTML") {
+            note("Blocked or failed to load: " + (t.src || t.href || t.tagName));
+            return;
+          }
+          var where = e.filename ? " @" + e.filename.split("/").pop() + ":" + e.lineno : "";
+          note((e.message || "Unknown error") + where);
+        },
+        true
+      );
+      window.addEventListener("unhandledrejection", function (e) {
+        var r = e.reason;
+        note("Unhandled rejection: " + (r && r.message ? r.message : r));
+      });
+      function paint() {
+        if (overlay || !firstError) return;
+        overlay = document.createElement("div");
+        overlay.style.cssText =
+          "position:fixed;inset:0;z-index:2147483647;background:#fff;color:#111;" +
+          "font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;padding:24px;" +
+          "overflow:auto;white-space:pre-wrap;direction:ltr;text-align:left";
+        overlay.textContent =
+          "Noor Al-Islam could not start.\n\n" + firstError +
+          "\n\nIf this page stays blank, open the browser console for the full stack trace.";
+        (document.body || document.documentElement).appendChild(overlay);
+      }
+      function watchRoot() {
+        var root = document.getElementById("root");
+        if (!root) return;
+        new MutationObserver(function () {
+          if (root.childNodes.length > 0 && overlay && overlay.parentNode) {
+            overlay.parentNode.removeChild(overlay);
+          }
+        }).observe(root, { childList: true, subtree: true });
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", watchRoot);
+      } else {
+        watchRoot();
+      }
+      setTimeout(function () {
+        var root = document.getElementById("root");
+        if (root && root.childNodes.length > 0) return;
+        if (!firstError)
+          firstError =
+            "No JavaScript error was captured — the app script never ran " +
+            "(network blocked, content-security-policy, or an outdated cached page).";
+        paint();
+      }, 3000);
+    })();
+  </script>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/logo.svg" />
   <link rel="manifest" href="/manifest.webmanifest" />

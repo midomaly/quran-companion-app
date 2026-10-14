@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <script>
+    /* Silent-crash reporter v2 — this template disables Vite's full-screen error
+       overlay, so any startup failure renders a blank white page with no message.
+       Captures errors + console errors, reports module-fetch status, and probes
+       /src/main.tsx so a silent hang names itself. */
+    (function () {
+      var origError = console.error;
+      var errors = []; /* { m: message, c: isFromConsole } */
+      var overlay = null;
+      var booted = Date.now();
+      var mountedOk = false;
+      function add(msg, isConsole) {
+        if (errors.length < 8) errors.push({ m: msg, c: !!isConsole });
+        try {
+          origError.call(console, "[Noor Al-Islam] diagnostic:", msg);
+        } catch (e) {
+          /* never let logging throw */
+        }
+      }
+      window.addEventListener(
+        "error",
+        function (e) {
+          var t = e.target;
+          if (t && t !== window && t.tagName && t.tagName !== "HTML") {
+            add("resource failed: " + (t.src || t.href || t.tagName), false);
+            return;
+          }
+          var where = e.filename ? " @" + e.filename.split("/").pop() + ":" + e.lineno : "";
+          add((e.message || "unknown error") + where, false);
+        },
+        true
+      );
+      window.addEventListener("unhandledrejection", function (e) {
+        var r = e.reason;
+        add("unhandled rejection: " + (r && r.message ? r.message : r), false);
+      });
+      console.error = function () {
+        var parts = [];
+        for (var i = 0; i < arguments.length; i++) {
+          var a = arguments[i];
+          parts.push(a && a.message ? a.message : String(a));
+        }
+        add("console.error: " + parts.join(" ").slice(0, 300), true);
+        return origError.apply(console, arguments);
+      };
+
+      function paint(lines, cover) {
+        if (overlay) {
+          overlay.textContent = lines.join("\n");
+          return;
+        }
+        overlay = document.createElement("div");
+        overlay.style.cssText =
+          "position:fixed;left:0;right:0;" +
+          (cover ? "top:0;bottom:0;" : "top:auto;") +
+          "z-index:2147483647;background:#fff;color:#111;" +
+          "font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;padding:16px;" +
+          "overflow:auto;white-space:pre-wrap;direction:ltr;text-align:left;" +
+          (cover ? "" : "max-height:50vh;border-bottom:2px solid #111;");
+        overlay.textContent = lines.join("\n");
+        (document.body || document.documentElement).appendChild(overlay);
+      }
+
+      function timingMap() {
+        var done = {};
+        var res = performance.getEntriesByType("resource");
+        for (var i = 0; i < res.length; i++) {
+          done[res[i].name] = Math.round(res[i].duration) + "ms";
+        }
+        return done;
+      }
+
+      function statusLines() {
+        var root = document.getElementById("root");
+        var kids = root ? root.childNodes.length : -1;
+        var lines = [];
+        lines.push(
+          "Noor Al-Islam diagnostics (t=" + Math.round(Date.now() - booted) +
+            "ms, readyState=" + document.readyState +
+            ", #root children=" + kids + ")"
+        );
+        lines.push("href: " + location.href.slice(0, 120));
+        var done = timingMap();
+        var scrs = document.querySelectorAll("script[src]");
+        lines.push("-- head module scripts --");
+        for (var j = 0; j < scrs.length; j++) {
+          var s = scrs[j].src;
+          lines.push(
+            "  NET " +
+              (done[s] !== undefined ? "DONE " + done[s] : "PENDING") +
+              "  " +
+              s.replace(location.origin, "")
+          );
+        }
+        var watch = [
+          "/src/main.tsx",
+          "@vly-ai_integrations",
+          "deps/react.js",
+          "deps/react-dom_client",
+          "deps/react-router",
+          "deps/convex_react",
+          "deps/@convex-dev_auth_react",
+        ];
+        lines.push("-- critical fetches (dynamic boot graph) --");
+        for (var w = 0; w < watch.length; w++) {
+          var hit = "";
+          for (var name in done) {
+            if (name.indexOf(watch[w]) !== -1) {
+              hit = done[name];
+              break;
+            }
+          }
+          lines.push("  " + (hit ? "DONE " + hit : "NOT COMPLETE") + "  " + watch[w]);
+        }
+        lines.push("-- captured (" + errors.length + ") --");
+        for (var k = 0; k < errors.length; k++) {
+          lines.push("  " + (errors[k].c ? "[console] " : "") + errors[k].m);
+        }
+        return lines;
+      }
+
+      function probe() {
+        var t0 = Date.now();
+        return Promise.race([
+          fetch("/src/main.tsx", { cache: "no-store" })
+            .then(function (r) {
+              return "probe /src/main.tsx -> HTTP " + r.status + " in " + (Date.now() - t0) + "ms";
+            })
+            .catch(function (e) {
+              return "probe /src/main.tsx -> FETCH ERROR: " + e.message;
+            }),
+          new Promise(function (res) {
+            setTimeout(function () {
+              res("probe /src/main.tsx -> TIMEOUT after " + (Date.now() - t0) + "ms (hanging response)");
+            }, 2500);
+          }),
+        ]);
+      }
+
+      function report() {
+        var root = document.getElementById("root");
+        var mounted = root && root.childNodes.length > 0;
+        var hard = 0;
+        for (var i = 0; i < errors.length; i++) if (!errors[i].c) hard++;
+        if (mountedOk || (mounted && hard === 0)) return; /* app is up — stay out of the way */
+        probe().then(function (p) {
+          var lines = statusLines();
+          lines.push("-- probe --");
+          lines.push("  " + p);
+          if (errors.length === 0 && !mounted) {
+            lines.push(
+              "NOTE: no JS error and #root is empty. If all fetches above are DONE, " +
+                "a script with unresolved top-level await is blocking document-order " +
+                "module execution; if one is NOT COMPLETE, that fetch is hanging."
+            );
+          }
+          paint(lines, !mounted);
+        });
+      }
+
+      function watchRoot() {
+        var root = document.getElementById("root");
+        if (!root || !window.MutationObserver) return;
+        new MutationObserver(function () {
+          if (root.childNodes.length > 0) {
+            mountedOk = true;
+            try {
+              sessionStorage.removeItem("noor:bootRetry");
+            } catch (e) {
+              /* storage unavailable */
+            }
+            if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+          }
+        }).observe(root, { childList: true, subtree: true });
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", watchRoot);
+      } else {
+        watchRoot();
+      }
+      setTimeout(report, 2600);
+    })();
+  </script>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="Noor Al-Islam — read the complete Holy Qur'an (114 surahs, 6,236 ayahs) in Uthmani script with verified translation, audio recitation, bookmarks and offline reading." />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0b5540" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a2f24" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap"
+    rel="stylesheet" />
+  <title>Noor Al-Islam — Qur'an & Muslim Companion</title>
+  <script type="module" crossorigin src="/assets/index-CG9Ykhne.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/react-vendor-Cb7OAGXl.js">
+  <link rel="modulepreload" crossorigin href="/assets/framer-motion-CtQbtku5.js">
+  <link rel="modulepreload" crossorigin href="/assets/radix-ui-DdGmI6ul.js">
+  <link rel="modulepreload" crossorigin href="/assets/charts-DI8UmbL1.js">
+  <link rel="stylesheet" crossorigin href="/assets/index-l4yk_r_4.css">
+</head>
+
+<body>
+  <div id="root"></div>
+  <script>
+    /* Boot via dynamic import (kept alongside the static module tag above).
+       Static module scripts execute in document order and wait for every earlier
+       module script (platform-injected /@vite/client and html-proxy scripts) to
+       settle first — if one of those hangs, the app never runs and the page is
+       silently white. A dynamic import from a classic script starts immediately
+       and is independent of that queue. The import uses the static tag's exact
+       src (including any ?t= cache-buster Vite injects) so both paths resolve
+       to the same ES module record and the app can never boot twice. */
+    var mainTag = document.querySelector('script[type="module"][src*="main.tsx"]');
+    import(mainTag ? mainTag.getAttribute("src") : "/src/main.tsx").catch(function (err) {
+      var msg = err && (err.message ? err.message : err);
+      console.error("[Noor Al-Islam] boot failed:", msg);
+      var el = document.createElement("div");
+      el.style.cssText =
+        "position:fixed;inset:0;z-index:2147483647;background:#fff;color:#111;" +
+        "font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;padding:24px;" +
+        "white-space:pre-wrap;direction:ltr;text-align:left";
+      el.textContent =
+        "Noor Al-Islam could not start.\n\nBoot failed: " + msg +
+        "\n\nOpen the browser console for the full stack trace.";
+      (document.body || document.documentElement).appendChild(el);
+    });
+    /* Watchdog: the first document load succeeds but module fetches can wedge
+       on a bad first-load connection pool. If React has not mounted after 6s,
+       reload the document with a cache-busting param (max 2 attempts) so the
+       page gets a fresh connection set. The counter resets on successful mount. */
+    try {
+      var retryN = parseInt(sessionStorage.getItem("noor:bootRetry") || "0", 10);
+      if (retryN < 2) {
+        setTimeout(function () {
+          var r = document.getElementById("root");
+          if (r && r.childNodes.length > 0) return;
+          sessionStorage.setItem("noor:bootRetry", String(retryN + 1));
+          var u = new URL(location.href);
+          u.searchParams.set("_bootretry", String(retryN + 1));
+          location.replace(u.href);
+        }, 6000);
+      }
+    } catch (e) {
+      /* storage unavailable — reporter still covers failures */
+    }
+  </script>
+</body>
+
+</html>

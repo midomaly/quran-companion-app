@@ -3,16 +3,23 @@
 
 <head>
   <script>
-    /* Silent-crash reporter v2 — this template disables Vite's full-screen error
-       overlay, so any startup failure renders a blank white page with no message.
-       Captures errors + console errors, reports module-fetch status, and probes
-       /src/main.tsx so a silent hang names itself. */
+    /* Silent-crash reporter v3 — this template disables Vite's full-screen error
+       overlay, so any startup failure would render a blank white page with no
+       message. Captures errors + console errors, reports live module-fetch
+       status, and probes /src/main.tsx so a silent hang names itself.
+       The static boot splash (#noor-boot, in <body>) covers slow loads; this
+       script only takes over with diagnostics if the app is still not mounted
+       after 11s, and hides everything the moment React mounts. */
     (function () {
       var origError = console.error;
       var errors = []; /* { m: message, c: isFromConsole } */
       var overlay = null;
       var booted = Date.now();
       var mountedOk = false;
+      var lastProbe = "probe: pending (runs every 3s)";
+      var reportTimer = null;
+      window.__noorMounted = false;
+
       function add(msg, isConsole) {
         if (errors.length < 8) errors.push({ m: msg, c: !!isConsole });
         try {
@@ -48,6 +55,27 @@
         return origError.apply(console, arguments);
       };
 
+      function isMounted() {
+        var root = document.getElementById("root");
+        return !!(root && root.childNodes.length > 0);
+      }
+
+      function hideBoot() {
+        window.__noorMounted = true;
+        var b = document.getElementById("noor-boot");
+        if (b && b.parentNode) b.parentNode.removeChild(b);
+        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        if (reportTimer) {
+          clearInterval(reportTimer);
+          reportTimer = null;
+        }
+        try {
+          sessionStorage.removeItem("noor:bootRetry");
+        } catch (e) {
+          /* storage unavailable */
+        }
+      }
+
       function paint(lines, cover) {
         if (overlay) {
           overlay.textContent = lines.join("\n");
@@ -65,6 +93,14 @@
         (document.body || document.documentElement).appendChild(overlay);
       }
 
+      function resourceCount() {
+        try {
+          return performance.getEntriesByType("resource").length;
+        } catch (e) {
+          return 0;
+        }
+      }
+
       function timingMap() {
         var done = {};
         var res = performance.getEntriesByType("resource");
@@ -75,13 +111,16 @@
       }
 
       function statusLines() {
-        var root = document.getElementById("root");
-        var kids = root ? root.childNodes.length : -1;
+        var kids = isMounted() ? document.getElementById("root").childNodes.length : 0;
         var lines = [];
         lines.push(
           "Noor Al-Islam diagnostics (t=" + Math.round(Date.now() - booted) +
             "ms, readyState=" + document.readyState +
             ", #root children=" + kids + ")"
+        );
+        lines.push(
+          "progress: " + resourceCount() + " network requests finished so far" +
+            (mountedOk ? "" : " — still loading…")
         );
         lines.push("href: " + location.href.slice(0, 120));
         var done = timingMap();
@@ -114,7 +153,7 @@
               break;
             }
           }
-          lines.push("  " + (hit ? "DONE " + hit : "NOT COMPLETE") + "  " + watch[w]);
+          lines.push("  " + (hit ? "DONE " + hit : "NOT DONE (in flight or never started)") + "  " + watch[w]);
         }
         lines.push("-- captured (" + errors.length + ") --");
         for (var k = 0; k < errors.length; k++) {
@@ -142,23 +181,23 @@
       }
 
       function report() {
-        var root = document.getElementById("root");
-        var mounted = root && root.childNodes.length > 0;
-        var hard = 0;
-        for (var i = 0; i < errors.length; i++) if (!errors[i].c) hard++;
-        if (mountedOk || (mounted && hard === 0)) return; /* app is up — stay out of the way */
+        if (mountedOk || isMounted()) {
+          if (!mountedOk) hideBoot();
+          return;
+        }
+        var lines = statusLines();
+        lines.push("-- probe --");
+        lines.push("  " + lastProbe);
+        if (errors.length === 0) {
+          lines.push(
+            "NOTE: no JS error, #root is empty. If the DONE counts above keep growing, " +
+              "the app is still loading — a slow connection can take a minute; leave this open. " +
+              "If they are frozen, that fetch is hanging."
+          );
+        }
+        paint(lines, true);
         probe().then(function (p) {
-          var lines = statusLines();
-          lines.push("-- probe --");
-          lines.push("  " + p);
-          if (errors.length === 0 && !mounted) {
-            lines.push(
-              "NOTE: no JS error and #root is empty. If all fetches above are DONE, " +
-                "a script with unresolved top-level await is blocking document-order " +
-                "module execution; if one is NOT COMPLETE, that fetch is hanging."
-            );
-          }
-          paint(lines, !mounted);
+          lastProbe = p;
         });
       }
 
@@ -166,23 +205,40 @@
         var root = document.getElementById("root");
         if (!root || !window.MutationObserver) return;
         new MutationObserver(function () {
-          if (root.childNodes.length > 0) {
+          if (root.childNodes.length > 0 && !mountedOk) {
             mountedOk = true;
-            try {
-              sessionStorage.removeItem("noor:bootRetry");
-            } catch (e) {
-              /* storage unavailable */
-            }
-            if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            hideBoot();
           }
         }).observe(root, { childList: true, subtree: true });
+        if (root.childNodes.length > 0 && !mountedOk) {
+          mountedOk = true;
+          hideBoot();
+        }
       }
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", watchRoot);
-      } else {
+
+      function updateBootStatus() {
+        if (mountedOk) return;
+        var st = document.getElementById("noor-boot-status");
+        if (st) st.textContent = resourceCount() + " requests loaded…";
+      }
+
+      function arm() {
         watchRoot();
+        updateBootStatus();
+        setInterval(updateBootStatus, 2000);
+        if (!isMounted()) {
+          /* Don't paint at 2.6s — on slow networks loading is normal then.
+             Start diagnostics at 11s and keep them live so counts visibly move. */
+          setTimeout(report, 11000);
+          reportTimer = setInterval(report, 3000);
+        }
       }
-      setTimeout(report, 2600);
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", arm);
+      } else {
+        arm();
+      }
     })();
   </script>
   <meta charset="UTF-8" />
@@ -198,9 +254,82 @@
     href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap"
     rel="stylesheet" />
   <title>Noor Al-Islam — Qur'an & Muslim Companion</title>
+  <style>
+    #noor-boot {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      padding: 24px;
+      background: #0b5540;
+      color: #f7e8c4;
+      font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+      text-align: center;
+    }
+
+    #noor-boot .spin {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 3px solid rgba(242, 215, 145, 0.25);
+      border-top-color: #f2d791;
+      animation: noor-spin 0.9s linear infinite;
+    }
+
+    #noor-boot .ar {
+      font-family: "Amiri Quran", "Amiri", serif;
+      font-size: 2.4rem;
+      line-height: 1.6;
+      direction: rtl;
+    }
+
+    #noor-boot .nm {
+      font-size: 11px;
+      letter-spacing: 0.45em;
+      text-transform: uppercase;
+      color: rgba(247, 232, 196, 0.85);
+    }
+
+    #noor-boot .tag {
+      font-size: 13px;
+      color: rgba(247, 232, 196, 0.6);
+    }
+
+    #noor-boot .st {
+      font-size: 11px;
+      color: rgba(247, 232, 196, 0.45);
+      min-height: 1em;
+    }
+
+    @keyframes noor-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #noor-boot .spin {
+        animation: none;
+        border-top-color: rgba(242, 215, 145, 0.6);
+      }
+    }
+  </style>
 </head>
 
 <body>
+  <!-- Static boot splash: shows instantly (no JS required) and is removed the
+       moment React mounts, so slow module loads never look like a dead page. -->
+  <div id="noor-boot" role="status" aria-live="polite">
+    <div class="spin" aria-hidden="true"></div>
+    <div class="ar">نور الإسلام</div>
+    <div class="nm">Noor Al-Islam</div>
+    <div class="tag">The Complete Qur'an &amp; Muslim Companion</div>
+    <div class="st" id="noor-boot-status">Starting…</div>
+  </div>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
   <script>
@@ -217,6 +346,7 @@
       var msg = err && (err.message ? err.message : err);
       console.error("[Noor Al-Islam] boot failed:", msg);
       var el = document.createElement("div");
+      el.setAttribute("data-noor-fail", "1");
       el.style.cssText =
         "position:fixed;inset:0;z-index:2147483647;background:#fff;color:#111;" +
         "font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;padding:24px;" +
@@ -226,21 +356,39 @@
         "\n\nOpen the browser console for the full stack trace.";
       (document.body || document.documentElement).appendChild(el);
     });
-    /* Watchdog: the first document load succeeds but module fetches can wedge
-       on a bad first-load connection pool. If React has not mounted after 6s,
-       reload the document with a cache-busting param (max 2 attempts) so the
-       page gets a fresh connection set. The counter resets on successful mount. */
+
+    /* Stall watchdog (replaces the old fixed 6s reload — that one was killing
+       legitimate slow boots: on high-latency connections the module graph can
+       take a minute to load). Reload with a cache-busting param only when there
+       has been ZERO completed network request for ~20s while #root is still
+       empty (a wedged first-load connection pool), max 2 attempts. A boot that
+       is slow but progressing is left alone. */
     try {
       var retryN = parseInt(sessionStorage.getItem("noor:bootRetry") || "0", 10);
       if (retryN < 2) {
-        setTimeout(function () {
+        var lastCount = -1;
+        var stallTicks = 0;
+        setInterval(function () {
+          if (window.__noorMounted) return;
+          if (document.querySelector("[data-noor-fail]")) return; /* failure screen shown — don't wipe it */
           var r = document.getElementById("root");
           if (r && r.childNodes.length > 0) return;
-          sessionStorage.setItem("noor:bootRetry", String(retryN + 1));
-          var u = new URL(location.href);
-          u.searchParams.set("_bootretry", String(retryN + 1));
-          location.replace(u.href);
-        }, 6000);
+          var n = 0;
+          try {
+            n = performance.getEntriesByType("resource").length;
+          } catch (e) {
+            /* performance API unavailable */
+          }
+          if (n === lastCount) stallTicks++;
+          else stallTicks = 0;
+          lastCount = n;
+          if (stallTicks >= 4) {
+            sessionStorage.setItem("noor:bootRetry", String(retryN + 1));
+            var u = new URL(location.href);
+            u.searchParams.set("_bootretry", String(retryN + 1));
+            location.replace(u.href);
+          }
+        }, 5000);
       }
     } catch (e) {
       /* storage unavailable — reporter still covers failures */

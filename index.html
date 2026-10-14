@@ -3,13 +3,16 @@
 
 <head>
   <script>
-    /* Silent-crash reporter v3 — this template disables Vite's full-screen error
+    /* Silent-crash reporter v4 — this template disables Vite's full-screen error
        overlay, so any startup failure would render a blank white page with no
-       message. Captures errors + console errors, reports live module-fetch
-       status, and probes /src/main.tsx so a silent hang names itself.
-       The static boot splash (#noor-boot, in <body>) covers slow loads; this
-       script only takes over with diagnostics if the app is still not mounted
-       after 11s, and hides everything the moment React mounts. */
+       message. CRITICAL: nothing here may wait on DOMContentLoaded — module
+       scripts delay DCL, so a hung module fetch means DCL never fires and every
+       deferred check stays blind (the v3 bug: splash showed "Starting…" forever
+       with no diagnostics). Everything is scheduled from script execution.
+       Behavior: static boot splash (#noor-boot) shows instantly; a live request
+       counter ticks while loading is healthy; the full diagnostics panel only
+       appears when loading is stalled, an error was captured, or t >= 45s; and
+       everything is removed the moment React mounts. */
     (function () {
       var origError = console.error;
       var errors = []; /* { m: message, c: isFromConsole } */
@@ -17,7 +20,10 @@
       var booted = Date.now();
       var mountedOk = false;
       var lastProbe = "probe: pending (runs every 3s)";
+      var lastCount = -1;
+      var frozenTicks = 0;
       var reportTimer = null;
+      var rootTimer = null;
       window.__noorMounted = false;
 
       function add(msg, isConsole) {
@@ -70,6 +76,7 @@
           reportTimer = null;
         }
         try {
+          sessionStorage.removeItem("noor:reloads");
           sessionStorage.removeItem("noor:bootRetry");
         } catch (e) {
           /* storage unavailable */
@@ -120,7 +127,7 @@
         );
         lines.push(
           "progress: " + resourceCount() + " network requests finished so far" +
-            (mountedOk ? "" : " — still loading…")
+            (frozenTicks > 0 ? " — NO new requests since last check (stalled)" : " — still loading")
         );
         lines.push("href: " + location.href.slice(0, 120));
         var done = timingMap();
@@ -182,17 +189,38 @@
 
       function report() {
         if (mountedOk || isMounted()) {
-          if (!mountedOk) hideBoot();
+          if (!mountedOk) {
+            mountedOk = true;
+            hideBoot();
+          }
           return;
         }
+        /* The explicit boot-failure screen is a better message than this panel. */
+        if (document.querySelector("[data-noor-fail]")) return;
+
+        var n = resourceCount();
+        if (n === lastCount) frozenTicks++;
+        else frozenTicks = 0;
+        lastCount = n;
+
+        var age = Date.now() - booted;
+        var stalled = frozenTicks >= 2; /* ~6s with zero completed requests */
+        var mustShow = errors.length > 0 || stalled || age >= 45000;
+        if (!mustShow && !overlay) {
+          /* Healthy-but-slow load: keep the branded splash with its live
+             counter instead of covering the page with diagnostics. */
+          updateBootStatus();
+          return;
+        }
+
         var lines = statusLines();
         lines.push("-- probe --");
         lines.push("  " + lastProbe);
         if (errors.length === 0) {
           lines.push(
             "NOTE: no JS error, #root is empty. If the DONE counts above keep growing, " +
-              "the app is still loading — a slow connection can take a minute; leave this open. " +
-              "If they are frozen, that fetch is hanging."
+              "the app is still loading — leave this open. If they are frozen, that fetch " +
+              "is hanging; the page auto-reloads after ~20s of zero progress."
           );
         }
         paint(lines, true);
@@ -201,19 +229,22 @@
         });
       }
 
-      function watchRoot() {
+      function attachRoot() {
         var root = document.getElementById("root");
-        if (!root || !window.MutationObserver) return;
-        new MutationObserver(function () {
-          if (root.childNodes.length > 0 && !mountedOk) {
-            mountedOk = true;
-            hideBoot();
-          }
-        }).observe(root, { childList: true, subtree: true });
+        if (!root) return false;
+        if (window.MutationObserver) {
+          new MutationObserver(function () {
+            if (root.childNodes.length > 0 && !mountedOk) {
+              mountedOk = true;
+              hideBoot();
+            }
+          }).observe(root, { childList: true, subtree: true });
+        }
         if (root.childNodes.length > 0 && !mountedOk) {
           mountedOk = true;
           hideBoot();
         }
+        return true;
       }
 
       function updateBootStatus() {
@@ -222,22 +253,20 @@
         if (st) st.textContent = resourceCount() + " requests loaded…";
       }
 
-      function arm() {
-        watchRoot();
-        updateBootStatus();
-        setInterval(updateBootStatus, 2000);
-        if (!isMounted()) {
-          /* Don't paint at 2.6s — on slow networks loading is normal then.
-             Start diagnostics at 11s and keep them live so counts visibly move. */
-          setTimeout(report, 11000);
-          reportTimer = setInterval(report, 3000);
-        }
-      }
-
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", arm);
-      } else {
-        arm();
+      /* All scheduling happens NOW — never gated on DOMContentLoaded. */
+      setInterval(updateBootStatus, 2000);
+      updateBootStatus();
+      setTimeout(report, 11000);
+      reportTimer = setInterval(report, 3000);
+      if (!attachRoot()) {
+        /* #root lives at the end of <body>; poll at 50ms until the parser
+           reaches it. This still works if DCL never fires. */
+        rootTimer = setInterval(function () {
+          if (attachRoot()) {
+            clearInterval(rootTimer);
+            rootTimer = null;
+          }
+        }, 50);
       }
     })();
   </script>
@@ -357,39 +386,57 @@
       (document.body || document.documentElement).appendChild(el);
     });
 
-    /* Stall watchdog (replaces the old fixed 6s reload — that one was killing
-       legitimate slow boots: on high-latency connections the module graph can
-       take a minute to load). Reload with a cache-busting param only when there
-       has been ZERO completed network request for ~20s while #root is still
-       empty (a wedged first-load connection pool), max 2 attempts. A boot that
-       is slow but progressing is left alone. */
+    /* Stall watchdog. Reload with a cache-busting param only when there has been
+       ZERO completed network request for ~20s while #root is still empty (a
+       wedged first-load connection pool) — a boot that is slow but progressing
+       is left alone. Budget: at most 2 reloads per 5-minute window, and the
+       window slides, so the watchdog self-heals instead of going permanently
+       blind the way the old lifetime counter did (it hit its cap during earlier
+       debugging sessions and never re-armed). */
     try {
-      var retryN = parseInt(sessionStorage.getItem("noor:bootRetry") || "0", 10);
-      if (retryN < 2) {
-        var lastCount = -1;
-        var stallTicks = 0;
-        setInterval(function () {
-          if (window.__noorMounted) return;
-          if (document.querySelector("[data-noor-fail]")) return; /* failure screen shown — don't wipe it */
-          var r = document.getElementById("root");
-          if (r && r.childNodes.length > 0) return;
-          var n = 0;
-          try {
-            n = performance.getEntriesByType("resource").length;
-          } catch (e) {
-            /* performance API unavailable */
-          }
-          if (n === lastCount) stallTicks++;
-          else stallTicks = 0;
-          lastCount = n;
-          if (stallTicks >= 4) {
-            sessionStorage.setItem("noor:bootRetry", String(retryN + 1));
-            var u = new URL(location.href);
-            u.searchParams.set("_bootretry", String(retryN + 1));
-            location.replace(u.href);
-          }
-        }, 5000);
+      var RELOAD_KEY = "noor:reloads";
+      var WINDOW_MS = 300000;
+      var MAX_PER_WINDOW = 2;
+      function loadHist() {
+        try {
+          var h = JSON.parse(sessionStorage.getItem(RELOAD_KEY) || "[]");
+          return Array.isArray(h) ? h : [];
+        } catch (e) {
+          return [];
+        }
       }
+      var lastCount = -1;
+      var stallTicks = 0;
+      setInterval(function () {
+        if (window.__noorMounted) return;
+        if (document.querySelector("[data-noor-fail]")) return; /* failure screen shown — don't wipe it */
+        var r = document.getElementById("root");
+        if (r && r.childNodes.length > 0) return;
+        var n = 0;
+        try {
+          n = performance.getEntriesByType("resource").length;
+        } catch (e) {
+          /* performance API unavailable */
+        }
+        if (n === lastCount) stallTicks++;
+        else stallTicks = 0;
+        lastCount = n;
+        if (stallTicks < 4) return; /* ~20s with zero progress */
+        var now = Date.now();
+        var hist = loadHist().filter(function (t) {
+          return now - t < WINDOW_MS;
+        });
+        if (hist.length >= MAX_PER_WINDOW) return;
+        hist.push(now);
+        try {
+          sessionStorage.setItem(RELOAD_KEY, JSON.stringify(hist));
+        } catch (e) {
+          /* storage unavailable — proceed with reload anyway */
+        }
+        var u = new URL(location.href);
+        u.searchParams.set("_bootretry", String(hist.length));
+        location.replace(u.href);
+      }, 5000);
     } catch (e) {
       /* storage unavailable — reporter still covers failures */
     }

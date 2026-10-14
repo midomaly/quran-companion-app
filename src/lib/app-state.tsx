@@ -1,7 +1,9 @@
 /**
  * Persistent app state: appearance settings, bookmarks, last-read position and
- * recent searches. Everything is stored in localStorage on this device only —
- * no account, no server, no tracking. Reading the Qur'an never requires sign-in.
+ * recent searches. Everything is stored in localStorage on this device first —
+ * reading the Qur'an never requires sign-in. When an account is signed in
+ * (phase 2), <CloudSync> (src/lib/app-sync.ts) merges this device state with
+ * the user's cloud doc and keeps the two reconciled in both directions.
  */
 
 import {
@@ -13,7 +15,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { CloudSync } from "./app-sync";
 import { isKnownReciter, type Reciter } from "./quranApi";
+import type { LocalSyncState } from "./sync-state";
 
 export type ThemeChoice = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
@@ -45,6 +49,9 @@ const SETTINGS_KEY = "noor:settings";
 const BOOKMARKS_KEY = "noor:bookmarks";
 const LAST_READ_KEY = "noor:lastRead";
 const RECENT_KEY = "noor:recentSearches";
+// Freshness stamps for last-writer-wins sync of settings / searches.
+const SETTINGS_AT_KEY = "noor:settingsUpdatedAt";
+const SEARCHES_AT_KEY = "noor:searchesUpdatedAt";
 
 export const MIN_ARABIC_FONT_SIZE = 20;
 export const MAX_ARABIC_FONT_SIZE = 64;
@@ -157,6 +164,18 @@ function loadLastRead(): LastRead | null {
   };
 }
 
+function loadTimestamp(key: string): number {
+  const n = safeParse<number>(safeGet(key));
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Strictly monotonic now — keeps LWW correct even with clock skew. */
+function bumpTimestamp(prev: number, key: string): number {
+  const next = Math.max(Date.now(), prev + 1);
+  safeSet(key, next);
+  return next;
+}
+
 function loadRecentSearches(): string[] {
   const stored = safeParse<unknown>(safeGet(RECENT_KEY));
   if (!Array.isArray(stored)) return [];
@@ -184,6 +203,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>(loadBookmarks);
   const [lastRead, setLastReadState] = useState<LastRead | null>(loadLastRead);
   const [recentSearches, setRecentSearches] = useState<string[]>(loadRecentSearches);
+  const [settingsUpdatedAt, setSettingsUpdatedAt] = useState<number>(() =>
+    loadTimestamp(SETTINGS_AT_KEY),
+  );
+  const [searchesUpdatedAt, setSearchesUpdatedAt] = useState<number>(() =>
+    loadTimestamp(SEARCHES_AT_KEY),
+  );
   const [systemDark, setSystemDark] = useState<boolean>(() => {
     if (typeof window === "undefined" || !window.matchMedia) return false;
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -220,6 +245,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       safeSet(SETTINGS_KEY, next);
       return next;
     });
+    setSettingsUpdatedAt((prev) => bumpTimestamp(prev, SETTINGS_AT_KEY));
   }, []);
 
   const isBookmarked = useCallback(
@@ -259,11 +285,54 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       safeSet(RECENT_KEY, next);
       return next;
     });
+    setSearchesUpdatedAt((prev) => bumpTimestamp(prev, SEARCHES_AT_KEY));
   }, []);
 
   const clearRecentSearches = useCallback(() => {
     setRecentSearches([]);
     safeSet(RECENT_KEY, []);
+    setSearchesUpdatedAt((prev) => bumpTimestamp(prev, SEARCHES_AT_KEY));
+  }, []);
+
+  /** Current sync payload — called fresh by the sync engine on each reconcile. */
+  const snapshot = useCallback(
+    (): LocalSyncState => ({
+      settings,
+      settingsUpdatedAt,
+      bookmarks,
+      lastRead,
+      recentSearches,
+      searchesUpdatedAt,
+    }),
+    [settings, settingsUpdatedAt, bookmarks, lastRead, recentSearches, searchesUpdatedAt],
+  );
+
+  /** Adopt state that arrived from the cloud: React state + localStorage. */
+  const apply = useCallback((incoming: LocalSyncState) => {
+    const reciter = isKnownReciter(incoming.settings.reciter)
+      ? incoming.settings.reciter
+      : DEFAULT_SETTINGS.reciter;
+    const nextSettings: Settings = {
+      ...incoming.settings,
+      reciter,
+      arabicFontSize: clampFontSize(incoming.settings.arabicFontSize),
+    };
+    const nextBookmarks = [...incoming.bookmarks].sort(
+      (a, b) => a.surah - b.surah || a.ayah - b.ayah,
+    );
+    const nextSearches = incoming.recentSearches.slice(0, MAX_RECENT_SEARCHES);
+    setSettings(nextSettings);
+    safeSet(SETTINGS_KEY, nextSettings);
+    setBookmarks(nextBookmarks);
+    safeSet(BOOKMARKS_KEY, nextBookmarks);
+    setLastReadState(incoming.lastRead);
+    safeSet(LAST_READ_KEY, incoming.lastRead);
+    setRecentSearches(nextSearches);
+    safeSet(RECENT_KEY, nextSearches);
+    setSettingsUpdatedAt(incoming.settingsUpdatedAt);
+    safeSet(SETTINGS_AT_KEY, incoming.settingsUpdatedAt);
+    setSearchesUpdatedAt(incoming.searchesUpdatedAt);
+    safeSet(SEARCHES_AT_KEY, incoming.searchesUpdatedAt);
   }, []);
 
   const value = useMemo<AppStateValue>(
@@ -295,7 +364,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
+  return (
+    <AppStateContext.Provider value={value}>
+      <CloudSync bridge={{ snapshot, apply }} />
+      {children}
+    </AppStateContext.Provider>
+  );
 }
 
 export function useAppState(): AppStateValue {

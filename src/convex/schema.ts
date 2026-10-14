@@ -32,6 +32,30 @@ const schema = defineSchema(
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
+    // Phase 2 — accounts & sync: the signed-in reader's state, mirrored from
+    // src/lib/app-state.tsx so bookmarks, last-read position, settings and
+    // recent searches follow the account across devices. One doc per user.
+    syncState: defineTable({
+      userId: v.id("users"),
+      settings: v.object({
+        theme: v.union(v.literal("light"), v.literal("dark"), v.literal("system")),
+        arabicFontSize: v.number(),
+        showTranslation: v.boolean(),
+        reciter: v.string(),
+        continuousPlayback: v.boolean(),
+      }),
+      settingsUpdatedAt: v.number(),
+      bookmarks: v.array(
+        v.object({ surah: v.number(), ayah: v.number(), addedAt: v.number() }),
+      ),
+      lastRead: v.optional(
+        v.object({ surah: v.number(), ayah: v.number(), updatedAt: v.number() }),
+      ),
+      recentSearches: v.array(v.string()),
+      searchesUpdatedAt: v.number(),
+      updatedAt: v.number(),
+    }).index("by_user", ["userId"]),
+
     // add other tables here
 
     // tableName: defineTable({

@@ -18,6 +18,13 @@ const Reader = lazy(() => import("./pages/Reader.tsx"));
 const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
+const Prayer = lazy(() => import("./pages/Prayer.tsx"));
+const Qibla = lazy(() => import("./pages/Qibla.tsx"));
+const Tasbih = lazy(() => import("./pages/Tasbih.tsx"));
+const Duas = lazy(() => import("./pages/Duas.tsx"));
+const Hadith = lazy(() => import("./pages/Hadith.tsx"));
+const CalendarPage = lazy(() => import("./pages/CalendarPage.tsx"));
+import { PrayerReminderHost } from "@/components/PrayerReminderHost";
 
 // Simple loading fallback for route transitions
 function RouteLoading() {
@@ -129,6 +136,12 @@ createRoot(document.getElementById("root")!).render(
                   <Route path="/" element={<Home />} />
                   <Route path="/quran" element={<QuranHub />} />
                   <Route path="/quran/:surahId" element={<Reader />} />
+                  <Route path="/prayer" element={<Prayer />} />
+                  <Route path="/qibla" element={<Qibla />} />
+                  <Route path="/tasbih" element={<Tasbih />} />
+                  <Route path="/duas" element={<Duas />} />
+                  <Route path="/hadith" element={<Hadith />} />
+                  <Route path="/calendar" element={<CalendarPage />} />
                 </Route>
                 <Route
                   path="/auth"
@@ -148,6 +161,7 @@ createRoot(document.getElementById("root")!).render(
           </BrowserRouter>
         </AppStateProvider>
         <Toaster />
+        <PrayerReminderHost />
       </ConvexAuthProvider>
     </RootErrorBoundary>
   </StrictMode>,

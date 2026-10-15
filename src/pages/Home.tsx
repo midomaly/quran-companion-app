@@ -4,10 +4,16 @@ import {
   ArrowRight,
   Bookmark,
   BookOpen,
+  CalendarDays,
+  CircleDot,
+  Clock,
+  Compass,
+  Hand,
   Layers,
   Loader2,
   Moon,
   RefreshCw,
+  ScrollText,
   Search,
   Sun,
 } from "lucide-react";
@@ -70,6 +76,15 @@ const QUICK_LINKS = [
   { icon: Layers, label: "Juz", to: "/quran?tab=juz" },
   { icon: Search, label: "Search", to: "/quran?tab=search" },
   { icon: Bookmark, label: "Bookmarks", to: "/quran?tab=bookmarks" },
+] as const;
+
+const COMPANION_LINKS = [
+  { icon: Clock, label: "Prayer times", to: "/prayer", hint: "Adhān alarms" },
+  { icon: Compass, label: "Qibla", to: "/qibla", hint: "Compass" },
+  { icon: CircleDot, label: "Tasbih", to: "/tasbih", hint: "Counter" },
+  { icon: Hand, label: "Duas", to: "/duas", hint: "Daily supplications" },
+  { icon: ScrollText, label: "Hadith", to: "/hadith", hint: "Forty Nawawi" },
+  { icon: CalendarDays, label: "Calendar", to: "/calendar", hint: "Hijri dates" },
 ] as const;
 
 interface DailyVerse {
@@ -316,6 +331,39 @@ export default function Home() {
                 <Icon className="size-4" />
               </span>
               <span className="text-sm font-semibold tracking-tight">{link.label}</span>
+            </button>
+          );
+        })}
+      </motion.div>
+
+      {/* Companion sections */}
+      <motion.h2
+        variants={item}
+        className="mt-6 text-[11px] font-bold tracking-[0.2em] text-muted-foreground uppercase"
+      >
+        Muslim companion
+      </motion.h2>
+      <motion.div variants={item} className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {COMPANION_LINKS.map((link) => {
+          const Icon = link.icon;
+          return (
+            <button
+              key={link.to}
+              type="button"
+              onClick={() => navigate(link.to)}
+              className="group flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 text-left transition-colors hover:border-primary/50"
+            >
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                <Icon className="size-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold tracking-tight">
+                  {link.label}
+                </span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  {link.hint}
+                </span>
+              </span>
             </button>
           );
         })}

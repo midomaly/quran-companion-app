@@ -1,11 +1,12 @@
 ## Noor Al-Islam — The Complete Qur'an & Muslim Companion
 
-Version 1 of this app does one thing completely: **you read the Qur'an** — all
-114 surahs, all 6,236 ayahs, in Uthmani script with a verified English
-translation, recitation audio, bookmarks, search and offline reading. No
+**You read the Qur'an** — all 114 surahs, all 6,236 ayahs, in Uthmani script
+with a verified English translation, recitation audio, bookmarks, search and
+offline reading — and the app covers the rest of a Muslim's day: prayer
+times with alarms, Qibla, tasbih, duas, hadith and a Hijri calendar. No
 account is ever required to read.
 
-### Version 1 features
+### Features
 
 - **Splash + branding**: emerald/gold identity, crescent mark, Islamic
   geometric pattern, light & dark mode.
@@ -20,6 +21,22 @@ account is ever required to read.
   ayah jump, bookmark/copy/share per ayah, automatic last-read tracking,
   reading progress bar, verse-by-verse audio (7 reciters, play/pause/prev/
   next/continuous/repeat/speed, lock-screen media controls).
+- **Prayer times** (`/prayer`): an offline astronomical engine (PrayTimes-
+  style solar position math) computes Fajr→Isha for your location with 9
+  calculation methods, Madhab/Asr choice and high-latitude fallback;
+  countdown to the next prayer, notification permission, and per-prayer
+  adhān alarms that chime in-app (reminder host runs app-wide).
+- **Qibla** (`/qibla`): great-circle bearing to the Kaaba from your location,
+  device-orientation compass (with manual fallback), city quick-picks.
+- **Tasbih** (`/tasbih`): counter with haptics, target circles, dhikr presets,
+  persisted session.
+- **Duas** (`/duas`): curated authentic supplications (morning/evening,
+  prayer, travel, food, distress…) with Arabic, transliteration and
+  translation.
+- **Hadith** (`/hadith`): attributed hadith collection including the Forty of
+  an-Nawawi, with narrator grading.
+- **Hijri calendar** (`/calendar`): dual Hijri/Gregorian month grid (Umm al-
+  Qura via Intl), Islamic events (Ramadan, Eids, ʿĀshūrāʾ, Laylat al-Qadr…).
 - **Offline**: every surah read once is cached on-device; an offline banner
   and graceful error states cover the rest.
 - **Settings**: theme, Arabic size, translation toggle, reciter, source
@@ -39,7 +56,7 @@ account is ever required to read.
 bun run dev         # start the dev server (the platform runs this for you)
 bun tsc -b --noEmit # typecheck
 bun run lint        # eslint
-bun test            # unit tests (metadata integrity, numbering, helpers)
+bun test            # unit tests (metadata integrity, prayer times, helpers)
 bun run verify:data # live check of all 114 surahs/6,236 ayahs against the source
 ```
 
@@ -48,17 +65,23 @@ bun run verify:data # live check of all 114 surahs/6,236 ayahs against the sourc
 - `src/lib/surahs.ts` — verified surah + juz metadata (do not hand-edit)
 - `src/lib/quranApi.ts` — data client, offline cache, search, audio URLs
 - `src/lib/quranText.ts` — pure display helpers (basmala split, daily ayah)
+- `src/lib/prayerTimes.ts` — offline astronomical prayer time engine
+- `src/lib/prayerSettings.ts` — method/madhab presets, alarms, next-prayer math
+- `src/lib/qibla.ts` — great-circle bearing to the Kaaba
+- `src/lib/hijri.ts` — Hijri parts + Islamic events for the calendar
 - `src/lib/app-state.tsx` — settings/bookmarks/last-read (localStorage)
 - `src/components/AppShell.tsx` — splash, bottom nav, offline banner
-- `src/pages/` — `Home`, `QuranHub`, `Reader`
+- `src/components/PrayerReminderHost.tsx` — app-wide adhān alarm engine
+- `src/data/` — curated duas + hadith content
+- `src/pages/` — `Home`, `QuranHub`, `Reader`, `Prayer`, `Qibla`, `Tasbih`,
+  `Duas`, `Hadith`, `CalendarPage`
 - `scripts/verify-live-data.ts` — religious-data integrity check
 
-### Version 1 scope
+### Scope notes
 
-Prayer times, Qibla, tasbih, duas, hadith, Ramadan, notifications, accounts
-and sync are intentionally **not** in version 1. They are planned for later
-phases. `/auth` and `/dashboard` from the template still work but nothing in
-v1 requires them.
+Accounts/sync (`/auth`, `/dashboard`) come from the template; nothing here
+requires them — reading, prayer times, alarms and all companion tools work
+fully offline without sign-in.
 
 ---
 

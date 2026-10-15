@@ -1,5 +1,15 @@
 import { useState } from "react";
-import { Check, Loader2, Settings2, Trash2, WifiOff } from "lucide-react";
+import {
+  Check,
+  Cloud,
+  CloudOff,
+  Loader2,
+  Settings2,
+  Trash2,
+  UserRound,
+  WifiOff,
+} from "lucide-react";
+import { useConvex } from "convex/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,7 +46,9 @@ import {
   useAppState,
   type ThemeChoice,
 } from "@/lib/app-state";
+import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
+import { useLocation, useNavigate } from "react-router";
 
 const THEME_OPTIONS: { value: ThemeChoice; label: string }[] = [
   { value: "light", label: "Light" },
@@ -49,6 +61,93 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     <h3 className="text-xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">
       {children}
     </h3>
+  );
+}
+
+/**
+ * Phase-2 account & sync section. Gated on a live Convex client so SSR/render
+ * trees (which mount <AppStateProvider> without providers) render nothing.
+ */
+function AccountSection({ close }: { close: () => void }) {
+  const convex = useConvex();
+  if (!convex) return null;
+  return <AccountSectionInner close={close} />;
+}
+
+function AccountSectionInner({ close }: { close: () => void }) {
+  const { isLoading, isAuthenticated, user } = useAuth();
+  const { bookmarks } = useAppState();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  if (isLoading) return null;
+
+  const goTo = (path: string) => {
+    close();
+    navigate(path);
+  };
+  const countLabel = `${bookmarks.length} bookmark${bookmarks.length === 1 ? "" : "s"} on this device`;
+
+  if (!isAuthenticated) {
+    const returnTo = `${location.pathname}${location.search}`;
+    return (
+      <section className="flex flex-col gap-3">
+        <SectionTitle>Account</SectionTitle>
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-3.5 py-3">
+          <div className="flex items-center gap-2.5 text-sm">
+            <CloudOff className="size-4 shrink-0 text-primary" />
+            <div className="flex flex-col">
+              <span className="font-medium">Sync across devices</span>
+              <span className="text-xs text-muted-foreground">{countLabel}</span>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            className="cursor-pointer gap-1.5"
+            onClick={() =>
+              goTo(`/auth?returnTo=${encodeURIComponent(returnTo)}`)
+            }
+          >
+            Sign in
+          </Button>
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">
+          Sign in with an email code to back up bookmarks, reading position and
+          settings — they follow your account to any device.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="flex flex-col gap-3">
+      <SectionTitle>Account</SectionTitle>
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-3.5 py-3">
+        <div className="flex min-w-0 items-center gap-2.5 text-sm">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <UserRound className="size-4" />
+          </span>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-medium">
+              {user?.name || user?.email || "Signed in"}
+            </span>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Cloud className="size-3 text-primary" /> Synced · {countLabel}
+            </span>
+          </div>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="cursor-pointer gap-1.5"
+          onClick={() => goTo("/dashboard")}
+        >
+          Manage
+        </Button>
+      </div>
+    </section>
   );
 }
 
@@ -244,10 +343,15 @@ export function SettingsButton({ className }: { className?: string }) {
                 </Button>
               </div>
               <p className="text-xs leading-5 text-muted-foreground">
-                Reading data stays on this device — no account needed. Bookmarks,
-                settings and your last read position never leave your browser.
+                Saved Qur&apos;an text always stays on this device. Bookmarks,
+                settings and your last-read position are stored locally too —
+                and backed up to your account automatically whenever you&apos;re
+                signed in.
               </p>
             </section>
+
+            {/* Account & sync (phase 2) */}
+            <AccountSection close={() => setOpen(false)} />
 
             {/* Sources */}
             <section className="flex flex-col gap-2">

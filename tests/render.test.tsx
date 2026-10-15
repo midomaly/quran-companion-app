@@ -12,6 +12,12 @@ import AppShell from "../src/components/AppShell";
 import Home from "../src/pages/Home";
 import QuranHub from "../src/pages/QuranHub";
 import Reader from "../src/pages/Reader";
+import Prayer from "../src/pages/Prayer";
+import Qibla from "../src/pages/Qibla";
+import Tasbih from "../src/pages/Tasbih";
+import Duas from "../src/pages/Duas";
+import Hadith from "../src/pages/Hadith";
+import CalendarPage from "../src/pages/CalendarPage";
 
 function render(path: string): string {
   const html = renderToString(
@@ -22,6 +28,12 @@ function render(path: string): string {
             <Route index element={<Home />} />
             <Route path="quran" element={<QuranHub />} />
             <Route path="quran/:surahId" element={<Reader />} />
+            <Route path="prayer" element={<Prayer />} />
+            <Route path="qibla" element={<Qibla />} />
+            <Route path="tasbih" element={<Tasbih />} />
+            <Route path="duas" element={<Duas />} />
+            <Route path="hadith" element={<Hadith />} />
+            <Route path="calendar" element={<CalendarPage />} />
           </Route>
         </Routes>
       </AppStateProvider>
@@ -40,6 +52,50 @@ describe("app shell", () => {
     expect(html).toContain("Noor Al-Islam");
     expect(html).toContain("<span>Home</span>");
     expect(html).toContain("<span>Quran</span>");
+    expect(html).toContain("<span>Prayer</span>");
+    expect(html).toContain("<span>Calendar</span>");
+    expect(html).toContain("<span>More</span>");
+  });
+});
+
+describe("companion sections", () => {
+  test("home links every companion section", () => {
+    const html = render("/");
+    for (const label of ["Prayer times", "Qibla", "Tasbih", "Duas", "Hadith", "Calendar"]) {
+      expect(html).toContain(label);
+    }
+  });
+
+  test("prayer page prompts for a location before showing times", () => {
+    const html = render("/prayer");
+    expect(html).toContain("Prayer times");
+    expect(html).toContain("Set your location");
+  });
+
+  test("qibla page renders the compass heading", () => {
+    const html = render("/qibla");
+    expect(html).toContain("Direction of the Kaaba");
+  });
+
+  test("tasbih page renders the counter", () => {
+    const html = render("/tasbih");
+    expect(html).toContain("Tasbih");
+  });
+
+  test("duas page renders the library", () => {
+    const html = render("/duas");
+    expect(html).toContain("Duas");
+  });
+
+  test("hadith page renders the library", () => {
+    const html = render("/hadith");
+    expect(html).toContain("Hadith");
+  });
+
+  test("calendar page renders the dual Hijri/Gregorian grid", () => {
+    const html = render("/calendar");
+    expect(html).toContain("Hijri Calendar");
+    expect(html).toContain("Umm al-Qura");
   });
 });
 

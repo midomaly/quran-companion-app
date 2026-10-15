@@ -1,10 +1,28 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { BookOpen, Home as HomeIcon, WifiOff } from "lucide-react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import {
+  BookOpen,
+  CalendarDays,
+  CircleDot,
+  Clock,
+  Compass,
+  Hand,
+  Home as HomeIcon,
+  LayoutGrid,
+  ScrollText,
+  WifiOff,
+} from "lucide-react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { CrescentMark, MosqueSilhouette } from "@/components/Brand";
 import { useOnline } from "@/hooks/use-online";
 import { cn } from "@/lib/utils";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 const SPLASH_KEY = "noor:splashSeen";
 const SPLASH_MS = 2100;
@@ -12,6 +30,15 @@ const SPLASH_MS = 2100;
 const NAV_ITEMS = [
   { to: "/", label: "Home", icon: HomeIcon, end: true },
   { to: "/quran", label: "Quran", icon: BookOpen, end: false },
+  { to: "/prayer", label: "Prayer", icon: Clock, end: false },
+  { to: "/calendar", label: "Calendar", icon: CalendarDays, end: false },
+] as const;
+
+const MORE_LINKS = [
+  { to: "/qibla", label: "Qibla compass", icon: Compass },
+  { to: "/tasbih", label: "Tasbih counter", icon: CircleDot },
+  { to: "/duas", label: "Duas library", icon: Hand },
+  { to: "/hadith", label: "Hadith library", icon: ScrollText },
 ] as const;
 
 /** Full-screen splash shown once per browser session. */
@@ -74,9 +101,59 @@ function Splash({ onDone }: { onDone: () => void }) {
   );
 }
 
+/** Bottom-nav "More" entry: a sheet linking the remaining sections. */
+function MoreMenu() {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const go = (to: string) => {
+    setOpen(false);
+    navigate(to);
+  };
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <button
+          type="button"
+          className="flex flex-1 flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[11px] font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          aria-label="More sections"
+        >
+          <LayoutGrid className="size-5" aria-hidden="true" />
+          <span>More</span>
+          <span className="mt-0.5 h-1 w-1 rounded-full bg-gold opacity-0" />
+        </button>
+      </SheetTrigger>
+      <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>More</SheetTitle>
+        </SheetHeader>
+        <div className="grid grid-cols-2 gap-2 px-4 pb-6">
+          {MORE_LINKS.map((link) => {
+            const Icon = link.icon;
+            return (
+              <button
+                key={link.to}
+                type="button"
+                onClick={() => go(link.to)}
+                className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-3 text-left transition-colors hover:border-primary/50"
+              >
+                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-secondary text-primary">
+                  <Icon className="size-4" />
+                </span>
+                <span className="truncate text-sm font-semibold tracking-tight">
+                  {link.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 /**
- * App frame for the two version-1 sections: splash, floating bottom
- * navigation (Home / Quran), offline banner and route outlet.
+ * App frame: splash, floating bottom navigation (Home / Quran / Prayer /
+ * Calendar + More sheet), offline banner and route outlet.
  */
 export default function AppShell() {
   const location = useLocation();
@@ -121,12 +198,12 @@ export default function AppShell() {
         <Outlet />
       </main>
 
-      {/* Bottom navigation (version 1: Home + Quran) */}
+      {/* Bottom navigation: primary sections + "More" sheet */}
       <nav
         aria-label="Primary"
         className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(env(safe-area-inset-bottom),0.75rem)]"
       >
-        <div className="pointer-events-auto mx-auto flex w-full max-w-xs items-center gap-1 rounded-2xl border border-border/70 bg-card/90 p-1.5 backdrop-blur-md">
+        <div className="pointer-events-auto mx-auto flex w-full max-w-md items-center gap-1 rounded-2xl border border-border/70 bg-card/90 p-1.5 backdrop-blur-md">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             return (
@@ -136,7 +213,7 @@ export default function AppShell() {
                 end={item.end}
                 className={({ isActive }) =>
                   cn(
-                    "flex flex-1 flex-col items-center gap-0.5 rounded-xl px-3 py-2 text-[11px] font-semibold transition-colors",
+                    "flex flex-1 flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[11px] font-semibold transition-colors",
                     isActive
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-secondary hover:text-foreground",
@@ -158,6 +235,7 @@ export default function AppShell() {
               </NavLink>
             );
           })}
+          <MoreMenu />
         </div>
       </nav>
 

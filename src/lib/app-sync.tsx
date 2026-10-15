@@ -58,7 +58,6 @@ function CloudSyncEngine({ bridge }: { bridge: SyncBridge }) {
   const pushSave = useMutation(api.sync.save);
 
   const bridgeRef = useRef(bridge);
-  bridgeRef.current = bridge;
   const syncedUserRef = useRef<string | null>(null);
   const syncedFpRef = useRef<string | null>(null);
   const lastCloudFpRef = useRef<string | null>(null);
@@ -66,6 +65,7 @@ function CloudSyncEngine({ bridge }: { bridge: SyncBridge }) {
   const pairSinceRef = useRef(0);
   const inFlightRef = useRef(false);
   const nextAttemptRef = useRef(0);
+  const reconcileRef = useRef<() => void>(() => {});
 
   const push = async (userId: string, state: LocalSyncState) => {
     const pushedFp = fingerprint(state);
@@ -179,10 +179,13 @@ function CloudSyncEngine({ bridge }: { bridge: SyncBridge }) {
     void push(userId, local);
   };
 
-  const reconcileRef = useRef(reconcile);
-  reconcileRef.current = reconcile;
   useEffect(() => {
-    reconcile(); // no deps: react to every state / auth / query change
+    // Refs must be written in an effect, not during render: point them at
+    // this render's values, then reconcile immediately (no deps — runs after
+    // every state / auth / query change).
+    bridgeRef.current = bridge;
+    reconcileRef.current = reconcile;
+    reconcile();
   });
   useEffect(() => {
     const id = setInterval(() => reconcileRef.current(), TICK_MS);

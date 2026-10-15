@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
+  BookOpenText,
   Bookmark,
   BookmarkCheck,
   ChevronLeft,
@@ -12,22 +13,35 @@ import {
   Pause,
   Play,
   Repeat,
+  RotateCcw,
   Share2,
   SkipBack,
   SkipForward,
+  StickyNote,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { SettingsButton } from "@/components/SettingsButton";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { useAppState } from "@/lib/app-state";
 import {
   ayahAudioUrl,
   errorMessage,
   fetchSurahArabic,
   fetchSurahTranslation,
+  fetchTafsir,
   reciterName,
-  TRANSLATION_EDITION_NAME,
+  translationEditionName,
+  TAFSIRS,
   ARABIC_EDITION_NAME,
   type AyahText,
 } from "@/lib/quranApi";
@@ -46,7 +60,8 @@ export default function Reader() {
   const targetAyah = Number.isInteger(rawAyah) && rawAyah > 0 ? rawAyah : 0;
 
   const navigate = useNavigate();
-  const { settings, isBookmarked, toggleBookmark, setLastRead } = useAppState();
+  const { settings, isBookmarked, toggleBookmark, setLastRead, getNote, setNote } =
+    useAppState();
 
   const [loaded, setLoaded] = useState<{
     surah: number;
@@ -80,6 +95,29 @@ export default function Reader() {
   const [jumpValue, setJumpValue] = useState("");
   const [readProgress, setReadProgress] = useState(0);
 
+  // Tafsir (commentary — fetched on demand, needs a connection)
+  const [tafsirAyah, setTafsirAyah] = useState<number | null>(null);
+  const [tafsirSource, setTafsirSource] = useState(TAFSIRS[0].id);
+  const [tafsirText, setTafsirText] = useState("");
+  const [tafsirStatus, setTafsirStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    "idle",
+  );
+  const [tafsirError, setTafsirError] = useState("");
+  const [tafsirKey, setTafsirKey] = useState(0);
+
+  // Personal notes (device-local)
+  const [noteAyah, setNoteAyah] = useState<number | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+
+  // Loop a range of ayahs (memorisation / revision)
+  const [loop, setLoop] = useState<{ from: number; to: number; remaining: number } | null>(
+    null,
+  );
+  const [loopPanel, setLoopPanel] = useState(false);
+  const [loopFrom, setLoopFrom] = useState("");
+  const [loopTo, setLoopTo] = useState("");
+  const [loopTimes, setLoopTimes] = useState("3");
+
   // Audio
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState<number | null>(null);
@@ -102,7 +140,7 @@ export default function Reader() {
         if (cancelled) return;
         setLoaded({ surah: surahNumber, arabic: ar, translation: null });
         setLoadError(null);
-        fetchSurahTranslation(surahNumber)
+        fetchSurahTranslation(surahNumber, settings.translation)
           .then((tr) => {
             if (cancelled) return;
             setLoaded((prev) =>
@@ -114,7 +152,7 @@ export default function Reader() {
             if (cancelled) return;
             setTranslationFail({
               surah: surahNumber,
-              message: `English translation unavailable right now — showing the Uthmani text only. (${errorMessage(err)})`,
+              message: `${translationEditionName(settings.translation)} translation unavailable right now — showing the Uthmani text only. (${errorMessage(err)})`,
             });
           });
       } catch (err) {
@@ -126,7 +164,7 @@ export default function Reader() {
     return () => {
       cancelled = true;
     };
-  }, [surahNumber, loadKey]);
+  }, [surahNumber, loadKey, settings.translation]);
 
   /* ---------------------------------------------------------------- */
   /* Jump to an ayah (?ayah=N) after content is ready                  */
@@ -273,13 +311,30 @@ export default function Reader() {
       }
       return;
     }
+    // Loop a chosen range (memorisation / revision).
+    if (loop) {
+      if (playing < loop.to) {
+        playAyah(playing + 1);
+        return;
+      }
+      // Reached the end of the range: repeat if iterations remain.
+      if (loop.remaining === Infinity || loop.remaining > 1) {
+        setLoop({ ...loop, remaining: loop.remaining === Infinity ? Infinity : loop.remaining - 1 });
+        playAyah(loop.from);
+        return;
+      }
+      setLoop(null);
+      setIsPlaying(false);
+      resetProgressBar();
+      return;
+    }
     if (settings.continuousPlayback && playing < arabic.length) {
       playAyah(playing + 1);
     } else {
       setIsPlaying(false);
       resetProgressBar();
     }
-  }, [arabic, playing, repeat, settings.continuousPlayback, playAyah]);
+  }, [arabic, playing, repeat, loop, settings.continuousPlayback, playAyah]);
 
   const handleAudioError = useCallback(() => {
     if (!audioRef.current?.src) return;
@@ -294,7 +349,73 @@ export default function Reader() {
     }
     setPlaying(null);
     setIsPlaying(false);
+    setLoop(null);
     resetProgressBar();
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* Tafsir (commentary, on demand)                                    */
+  /* ---------------------------------------------------------------- */
+  useEffect(() => {
+    if (tafsirAyah === null || !arabic) return;
+    let cancelled = false;
+    const target = arabic.find((a) => a.n === tafsirAyah);
+    if (!target) return;
+    setTafsirStatus("loading");
+    setTafsirText("");
+    setTafsirError("");
+    fetchTafsir(target.g, tafsirSource)
+      .then((text) => {
+        if (cancelled) return;
+        setTafsirText(text);
+        setTafsirStatus("ready");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setTafsirError(errorMessage(err));
+        setTafsirStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tafsirAyah, tafsirSource, tafsirKey, arabic]);
+
+  /* ---------------------------------------------------------------- */
+  /* Notes                                                             */
+  /* ---------------------------------------------------------------- */
+  const openNote = (n: number) => {
+    setNoteAyah(n);
+    setNoteDraft(getNote(surahNumber, n)?.text ?? "");
+  };
+
+  const saveNote = () => {
+    if (noteAyah === null) return;
+    setNote(surahNumber, noteAyah, noteDraft);
+    toast.success(noteDraft.trim() ? `Note saved on ${surahNumber}:${noteAyah}` : "Note removed");
+    setNoteAyah(null);
+  };
+
+  /* ---------------------------------------------------------------- */
+  /* Loop range                                                        */
+  /* ---------------------------------------------------------------- */
+  const startLoop = () => {
+    if (!arabic) return;
+    const from = Number(loopFrom);
+    const to = Number(loopTo);
+    if (
+      !Number.isInteger(from) ||
+      !Number.isInteger(to) ||
+      from < 1 ||
+      to > arabic.length ||
+      from > to
+    ) {
+      toast.error(`Enter a range within 1–${arabic.length}, start ≤ end.`);
+      return;
+    }
+    const remaining = loopTimes === "inf" ? Infinity : Number(loopTimes);
+    setLoop({ from, to, remaining });
+    setLoopPanel(false);
+    playAyah(from);
   };
 
   const stepAyah = (delta: number) => {
@@ -356,12 +477,12 @@ export default function Reader() {
         a.text,
         tr ? `\n"${tr.text}"` : "",
         `\n— ${ref}`,
-        `\nQur'an text: Tanzil.net (Uthmani) · Translation: ${TRANSLATION_EDITION_NAME}`,
+        `\nQur'an text: Tanzil.net (Uthmani) · Translation: ${translationEditionName(settings.translation)}`,
       ]
         .filter(Boolean)
         .join("\n");
     },
-    [translation, surah, surahNumber],
+    [translation, surah, surahNumber, settings.translation],
   );
 
   const copyAyah = async (a: AyahText) => {
@@ -493,7 +614,9 @@ export default function Reader() {
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
             {surah?.revelation} · {surah?.ayahs} ayahs · {ARABIC_EDITION_NAME}
-            {settings.showTranslation ? ` · Translation: ${TRANSLATION_EDITION_NAME}` : ""}
+            {settings.showTranslation
+              ? ` · Translation: ${translationEditionName(settings.translation)}`
+              : ""}
           </p>
           {translationNote && (
             <p className="mt-2 text-[11px] text-muted-foreground">{translationNote}</p>
@@ -513,6 +636,7 @@ export default function Reader() {
               const trText = translationByAyah.get(a.n);
               const bookmarked = isBookmarked(surahNumber, a.n);
               const isCurrentAudio = playing === a.n;
+              const note = getNote(surahNumber, a.n);
               return (
                 <article
                   key={a.n}
@@ -579,6 +703,29 @@ export default function Reader() {
                       </button>
                       <button
                         type="button"
+                        onClick={() => setTafsirAyah(a.n)}
+                        aria-label={`Tafsir for ayah ${a.n}`}
+                        className="grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                      >
+                        <BookOpenText className="size-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openNote(a.n)}
+                        aria-label={
+                          note ? `Edit note on ayah ${a.n}` : `Add a note to ayah ${a.n}`
+                        }
+                        className={cn(
+                          "grid size-8 place-items-center rounded-lg transition-colors",
+                          note
+                            ? "text-primary hover:bg-primary/10"
+                            : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                        )}
+                      >
+                        <StickyNote className="size-4" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => copyAyah(a)}
                         aria-label={`Copy ayah ${a.n}`}
                         className="grid size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
@@ -627,6 +774,20 @@ export default function Reader() {
                         <span className="text-xs italic">Translation loading…</span>
                       )}
                     </p>
+                  )}
+
+                  {/* Personal note */}
+                  {note && (
+                    <button
+                      type="button"
+                      onClick={() => openNote(a.n)}
+                      className="mt-2 flex w-full items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-left transition-colors hover:bg-primary/10"
+                    >
+                      <StickyNote className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                      <span className="line-clamp-3 whitespace-pre-wrap text-xs leading-5 text-foreground/80">
+                        {note.text}
+                      </span>
+                    </button>
                   )}
                 </article>
               );
@@ -730,9 +891,35 @@ export default function Reader() {
                   </p>
                   <p className="truncate text-[10px] text-muted-foreground">
                     {reciterName(settings.reciter)}
-                    {!settings.continuousPlayback && !repeat ? " · single ayah" : ""}
+                    {loop
+                      ? ` · loop ${loop.from}–${loop.to} ${loop.remaining === Infinity ? "∞" : `(${loop.remaining} left)`}`
+                      : !settings.continuousPlayback && !repeat
+                        ? " · single ayah"
+                        : ""}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (loop) {
+                      setLoop(null);
+                      return;
+                    }
+                    setLoopFrom((prev) => prev || String(playing));
+                    setLoopTo((prev) => prev || String(playing));
+                    setLoopPanel((p) => !p);
+                  }}
+                  aria-label={loop ? "Stop looping range" : "Loop a range of ayahs"}
+                  aria-pressed={loop !== null}
+                  className={cn(
+                    "grid size-8 shrink-0 place-items-center rounded-lg transition-colors",
+                    loop
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                  )}
+                >
+                  <RotateCcw className="size-4" />
+                </button>
                 <button
                   type="button"
                   onClick={() => setRepeat((r) => !r)}
@@ -774,6 +961,193 @@ export default function Reader() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Loop-range picker (memorisation / revision) */}
+      <AnimatePresence>
+        {loopPanel && playing !== null && surah && !loop && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-x-0 bottom-40 z-40 px-3"
+          >
+            <div className="mx-auto w-full max-w-md rounded-2xl border border-border bg-card/95 p-3 backdrop-blur-md">
+              <p className="mb-2 text-xs font-semibold text-foreground">Loop a range of ayahs</p>
+              <div className="flex items-center gap-2 text-xs">
+                <label className="flex items-center gap-1.5 text-muted-foreground">
+                  From
+                  <input
+                    type="number"
+                    min={1}
+                    max={arabic?.length}
+                    value={loopFrom}
+                    onChange={(e) => setLoopFrom(e.target.value)}
+                    aria-label="Loop start ayah"
+                    className="h-8 w-14 rounded-lg border border-input bg-card px-1.5 text-center tabular-nums outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 text-muted-foreground">
+                  To
+                  <input
+                    type="number"
+                    min={1}
+                    max={arabic?.length}
+                    value={loopTo}
+                    onChange={(e) => setLoopTo(e.target.value)}
+                    aria-label="Loop end ayah"
+                    className="h-8 w-14 rounded-lg border border-input bg-card px-1.5 text-center tabular-nums outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 text-muted-foreground">
+                  Times
+                  <select
+                    value={loopTimes}
+                    onChange={(e) => setLoopTimes(e.target.value)}
+                    aria-label="Loop repetitions"
+                    className="h-8 rounded-lg border border-input bg-card px-1.5 outline-none focus:border-primary"
+                  >
+                    <option value="3">3</option>
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                    <option value="inf">∞</option>
+                  </select>
+                </label>
+                <Button size="sm" className="ml-auto h-8 cursor-pointer" onClick={startLoop}>
+                  Start
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Tafsir (commentary) */}
+      <Dialog
+        open={tafsirAyah !== null}
+        onOpenChange={(open) => {
+          if (!open) setTafsirAyah(null);
+        }}
+      >
+        <DialogContent className="max-h-[82dvh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Tafsir — {surah?.translit} {surahNumber}:{tafsirAyah}
+            </DialogTitle>
+            <DialogDescription>
+              Commentary from a recognised source — it is scholarly explanation,
+              NOT the Qur&apos;an itself.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap gap-1.5">
+            {TAFSIRS.map((tr) => (
+              <button
+                key={tr.id}
+                type="button"
+                onClick={() => setTafsirSource(tr.id)}
+                aria-pressed={tafsirSource === tr.id}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                  tafsirSource === tr.id
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border bg-card text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {tr.label}
+              </button>
+            ))}
+          </div>
+
+          {tafsirStatus === "loading" && (
+            <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" /> Loading tafsir…
+            </p>
+          )}
+          {tafsirStatus === "error" && (
+            <div className="py-4">
+              <p className="text-sm text-muted-foreground">{tafsirError}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3 cursor-pointer"
+                onClick={() => setTafsirKey((k) => k + 1)}
+              >
+                Try again
+              </Button>
+            </div>
+          )}
+          {tafsirStatus === "ready" && (
+            <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/90">
+              {tafsirText}
+            </p>
+          )}
+
+          <p className="text-[11px] leading-4 text-muted-foreground">
+            Source: {TAFSIRS.find((tr) => tr.id === tafsirSource)?.name} —{" "}
+            {TAFSIRS.find((tr) => tr.id === tafsirSource)?.author}. Fetched from
+            Qur&apos;an.com; requires an internet connection.
+          </p>
+        </DialogContent>
+      </Dialog>
+
+      {/* Personal note */}
+      <Dialog
+        open={noteAyah !== null}
+        onOpenChange={(open) => {
+          if (!open) setNoteAyah(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              Note — {surah?.translit} {surahNumber}:{noteAyah}
+            </DialogTitle>
+            <DialogDescription>
+              A private reflection stored on this device only.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            placeholder="What does this ayah mean to you?"
+            rows={5}
+            maxLength={2000}
+            className="resize-none"
+          />
+          <div className="flex items-center justify-between gap-2">
+            {noteAyah !== null && getNote(surahNumber, noteAyah) ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="cursor-pointer text-destructive hover:text-destructive"
+                onClick={() => {
+                  setNote(surahNumber, noteAyah, "");
+                  toast.success(`Note removed from ${surahNumber}:${noteAyah}`);
+                  setNoteAyah(null);
+                }}
+              >
+                Delete note
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="cursor-pointer"
+                onClick={() => setNoteAyah(null)}
+              >
+                Cancel
+              </Button>
+              <Button size="sm" className="cursor-pointer" onClick={saveNote}>
+                Save note
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

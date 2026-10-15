@@ -234,7 +234,10 @@ export default function Qibla() {
           <p className="max-w-xs text-center text-xs leading-5 text-muted-foreground">
             {heading !== null
               ? "Turn until the needle points up. On a phone without a magnetometer the dial stays fixed — follow the degrees above."
-              : "Live compass needs device motion permission (iPhone asks once). The bearing above always works: face that angle from true north."}
+              : "Live compass needs device motion permission (iPhone asks once). The bearing above always works: face that angle from true north."}{" "}
+            If the needle swings erratically, move away from magnets, metal
+            frames and speakers, and wave your phone in a figure-eight to
+            recalibrate.
           </p>
           {orientation === "denied" && (
             <p className="text-xs text-destructive">

@@ -105,7 +105,7 @@ export default function Downloads() {
       (s) =>
         s.translit.toLowerCase().includes(q) ||
         s.meaning.toLowerCase().includes(q) ||
-        String(s.s ?? s.n) === q,
+        String(s.n) === q,
     );
   }, [query]);
 

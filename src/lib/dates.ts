@@ -4,9 +4,12 @@
  * The Hijri date uses the device's ICU implementation with the Umm al-Qura
  * calendar (Intl), which is the official calendar of Saudi Arabia. Actual
  * Islamic dates depend on local moon sighting — the UI always shows a note to
- * that effect. When the environment lacks the calendar, we return null instead
- * of guessing.
+ * that effect. The user's manual day adjustment (src/lib/hijri.ts) is
+ * applied here so every surface agrees. When the environment lacks the
+ * calendar, we return null instead of guessing.
  */
+
+import { applyHijriOffset } from "./hijri";
 
 export function formatGregorianLong(date: Date): string {
   try {
@@ -40,7 +43,7 @@ export function formatHijri(date: Date): string | null {
       day: "numeric",
       month: "long",
       year: "numeric",
-    }).format(date);
+    }).format(applyHijriOffset(date));
   } catch {
     return null;
   }
@@ -53,7 +56,7 @@ export function formatHijriArabic(date: Date): string | null {
       day: "numeric",
       month: "long",
       year: "numeric",
-    }).format(date);
+    }).format(applyHijriOffset(date));
   } catch {
     return null;
   }

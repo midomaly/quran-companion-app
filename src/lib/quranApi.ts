@@ -17,13 +17,27 @@
  */
 
 import { isValidSurah } from "./surahs";
+import {
+  DEFAULT_TRANSLATION_ID,
+  isKnownTranslation,
+  translationEditionName,
+} from "./translation-editions";
+
+export {
+  TRANSLATIONS,
+  isKnownTranslation,
+  translationEditionName,
+  DEFAULT_TRANSLATION_ID,
+  type TranslationEdition,
+} from "./translation-editions";
 
 const API_BASE = "https://api.alquran.cloud/v1";
 const AUDIO_BASE = "https://cdn.islamic.network/quran/audio";
 const REQUEST_TIMEOUT_MS = 15000;
 
 const CACHE_AR_PREFIX = "noor:ar:";
-const CACHE_EN_PREFIX = "noor:en:";
+const CACHE_EN_PREFIX = "noor:en:"; // legacy prefix for en.sahih
+const CACHE_TR_PREFIX = "noor:tr:"; // noor:tr:{edition}:{surah}
 
 export const ARABIC_EDITION_NAME = "Uthmani script (Tanzil.net)";
 export const TRANSLATION_EDITION_NAME = "Saheeh International";
@@ -202,18 +216,116 @@ export async function fetchSurahArabic(surah: number): Promise<AyahText[]> {
   return ayahs;
 }
 
-/** Saheeh International English translation of a surah. Cache-first. */
-export async function fetchSurahTranslation(surah: number): Promise<AyahText[]> {
+/**
+ * Translation of a surah in a specific verified edition (see
+ * src/lib/translation-editions.ts). Cache-first, so a downloaded edition
+ * stays available offline. Unknown identifiers fall back to Saheeh
+ * International — this function never invents text.
+ */
+export async function fetchSurahTranslation(
+  surah: number,
+  edition: string = DEFAULT_TRANSLATION_ID,
+): Promise<AyahText[]> {
   if (!isValidSurah(surah)) {
     throw new QuranApiError("invalid", `Surah ${surah} does not exist.`);
   }
-  const key = `${CACHE_EN_PREFIX}${surah}`;
+  const id = isKnownTranslation(edition) ? edition : DEFAULT_TRANSLATION_ID;
+  // en.sahih keeps its historical cache key so previously saved surahs still
+  // count as downloaded.
+  const key =
+    id === DEFAULT_TRANSLATION_ID
+      ? `${CACHE_EN_PREFIX}${surah}`
+      : `${CACHE_TR_PREFIX}${id}:${surah}`;
   const cached = readCache<AyahText[]>(key);
   if (cached) return cached;
-  const data = (await fetchJson(`${API_BASE}/surah/${surah}/en.sahih`)) as ApiSurahPayload;
+  const data = (await fetchJson(`${API_BASE}/surah/${surah}/${id}`)) as ApiSurahPayload;
   const ayahs = parseAyahs(data);
   writeCache(key, ayahs);
   return ayahs;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tafsir (commentary)                                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Tafsir resources, served by the Qur'an.com API (https://api.quran.com,
+ * public, CORS-enabled — verified). Two recognised sources are offered:
+ *
+ *  - id 169: Tafsir Ibn Kathir (Abridged), Hafiz Ibn Kathir, English
+ *  - id 16:  Tafsir al-Muyassar, King Fahd Complex, Arabic
+ *
+ * Tafsir is commentary, NOT scripture — the UI labels it as such. It is
+ * fetched on demand (needs a connection) and never cached to storage.
+ */
+export interface TafsirResource {
+  id: number;
+  name: string;
+  author: string;
+  lang: "ar" | "en";
+  label: string;
+}
+
+export const TAFSIRS: TafsirResource[] = [
+  {
+    id: 169,
+    name: "Ibn Kathir (Abridged)",
+    author: "Hafiz Ibn Kathir (1300–1373 CE)",
+    lang: "en",
+    label: "Ibn Kathir — English",
+  },
+  {
+    id: 16,
+    name: "Tafsir al-Muyassar",
+    author: "King Fahd Complex for the Printing of the Holy Qur'an",
+    lang: "ar",
+    label: "Al-Muyassar — Arabic",
+  },
+];
+
+const TAFSIR_BASE = "https://api.quran.com/api/v4/tafsirs";
+
+/** Remove the HTML tags quran.com wraps tafsir text in. Plain text out. */
+export function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Tafsir of one ayah (by its Qur'an-wide number, 1..6236). Requires a
+ * connection; throws QuranApiError("offline") with a clear message when the
+ * device is offline. NOT cached to localStorage — commentary is fetched on
+ * demand so storage stays reserved for scripture.
+ */
+export async function fetchTafsir(
+  globalAyah: number,
+  tafsirId: number = TAFSIRS[0].id,
+): Promise<string> {
+  if (!Number.isInteger(globalAyah) || globalAyah < 1 || globalAyah > 6236) {
+    throw new QuranApiError("invalid", `Ayah ${globalAyah} does not exist.`);
+  }
+  const known = TAFSIRS.find((t) => t.id === tafsirId);
+  if (!known) {
+    throw new QuranApiError("invalid", "Unknown tafsir source.");
+  }
+  const data = (await fetchJson(`${TAFSIR_BASE}/${tafsirId}/by_ayah/${globalAyah}`)) as {
+    tafsir?: { text?: string };
+  };
+  const text = data?.tafsir?.text;
+  if (typeof text !== "string" || !text.trim()) {
+    throw new QuranApiError("not-found", "No tafsir is available for this ayah.");
+  }
+  return stripHtml(text);
 }
 
 /* ------------------------------------------------------------------ */
@@ -321,6 +433,16 @@ export function listQuranCache(): CacheEntry[] {
           e.translation = true;
           e.bytes += value.length;
         }
+      } else if (key.startsWith(CACHE_TR_PREFIX)) {
+        // noor:tr:{edition}:{surah}
+        const rest = key.slice(CACHE_TR_PREFIX.length);
+        const colon = rest.lastIndexOf(":");
+        const surah = Number(rest.slice(colon + 1));
+        if (colon > 0 && Number.isInteger(surah) && surah >= 1 && surah <= 114) {
+          const e = entryFor(surah);
+          e.translation = true;
+          e.bytes += value.length;
+        }
       }
     }
   } catch {
@@ -329,11 +451,19 @@ export function listQuranCache(): CacheEntry[] {
   return [...map.values()].sort((a, b) => a.surah - b.surah);
 }
 
-/** Remove the saved text of one surah (both editions). */
+/** Remove the saved text of one surah (Arabic + every saved translation). */
 export function removeSurahCache(surah: number): void {
   try {
     localStorage.removeItem(`${CACHE_AR_PREFIX}${surah}`);
     localStorage.removeItem(`${CACHE_EN_PREFIX}${surah}`);
+    const stale: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(`${CACHE_TR_PREFIX}`) && key.endsWith(`:${surah}`)) {
+        stale.push(key);
+      }
+    }
+    stale.forEach((k) => localStorage.removeItem(k));
   } catch {
     /* storage unavailable */
   }
@@ -354,7 +484,12 @@ export function clearQuranCache(): number {
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && (key.startsWith(CACHE_AR_PREFIX) || key.startsWith(CACHE_EN_PREFIX))) {
+      if (
+        key &&
+        (key.startsWith(CACHE_AR_PREFIX) ||
+          key.startsWith(CACHE_EN_PREFIX) ||
+          key.startsWith(CACHE_TR_PREFIX))
+      ) {
         keys.push(key);
       }
     }

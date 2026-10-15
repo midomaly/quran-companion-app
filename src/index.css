@@ -199,3 +199,29 @@
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Printable calendar / prayer timetable (phase 2) */
+@media print {
+  /* Chrome UI stays, app chrome goes. */
+  nav[aria-label="Primary"],
+  .print-hide,
+  [data-print-hide] {
+    display: none !important;
+  }
+  main {
+    padding-bottom: 0 !important;
+  }
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+  .print-card {
+    border: 1px solid #bbb !important;
+    background: #fff !important;
+    color: #111 !important;
+    break-inside: avoid;
+  }
+  a[href]::after {
+    content: "";
+  }
+}

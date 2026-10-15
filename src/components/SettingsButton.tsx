@@ -36,9 +36,10 @@ import { Switch } from "@/components/ui/switch";
 import {
   ARABIC_EDITION_NAME,
   RECITERS,
-  TRANSLATION_EDITION_NAME,
+  TRANSLATIONS,
   clearQuranCache,
   offlineSurahCount,
+  translationEditionName,
 } from "@/lib/quranApi";
 import {
   MAX_ARABIC_FONT_SIZE,
@@ -293,20 +294,46 @@ export function SettingsButton({ className }: { className?: string }) {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card px-3.5 py-3">
-                <div className="flex flex-col gap-0.5">
-                  <Label htmlFor="show-translation" className="text-sm">
-                    English translation
-                  </Label>
+              <div className="flex flex-col gap-2.5">
+                <Label htmlFor="show-translation" className="text-sm">
+                  Translation under each ayah
+                </Label>
+                <div className="flex items-center justify-between gap-3">
                   <span className="text-xs text-muted-foreground">
-                    Show {TRANSLATION_EDITION_NAME} under each ayah
+                    {settings.showTranslation
+                      ? `Showing ${translationEditionName(settings.translation)}`
+                      : "Hidden — Arabic only"}
                   </span>
+                  <Switch
+                    id="show-translation"
+                    checked={settings.showTranslation}
+                    onCheckedChange={(checked) => updateSettings({ showTranslation: checked })}
+                  />
                 </div>
-                <Switch
-                  id="show-translation"
-                  checked={settings.showTranslation}
-                  onCheckedChange={(checked) => updateSettings({ showTranslation: checked })}
-                />
+                {settings.showTranslation && (
+                  <div className="mt-1 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                    {TRANSLATIONS.map((tr) => {
+                      const active = settings.translation === tr.id;
+                      return (
+                        <button
+                          key={tr.id}
+                          type="button"
+                          onClick={() => updateSettings({ translation: tr.id })}
+                          className={cn(
+                            "flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors",
+                            active
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                          )}
+                          aria-pressed={active}
+                        >
+                          <span className="truncate">{tr.label}</span>
+                          {active && <Check className="size-3.5 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card px-3.5 py-3">
@@ -402,7 +429,13 @@ export function SettingsButton({ className }: { className?: string }) {
                     tanzil.net
                   </a>
                 </li>
-                <li>English translation: {TRANSLATION_EDITION_NAME}</li>
+                <li>
+                  Translation: {translationEditionName(settings.translation)} (verified, via
+                  AlQuran Cloud)
+                </li>
+                <li>
+                  Tafsir: Ibn Kathir (Abridged) &amp; Tafsir al-Muyassar via Qur&apos;an.com
+                </li>
                 <li>Verse audio: cdn.islamic.network</li>
                 <li>
                   Hijri date: Umm al-Qura calendar from your device — actual dates

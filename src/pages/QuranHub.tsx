@@ -4,6 +4,7 @@ import {
   Bookmark,
   BookmarkX,
   BookOpen,
+  CalendarCheck,
   ChevronRight,
   Layers,
   Loader2,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { SettingsButton } from "@/components/SettingsButton";
+import { QuranPlans } from "@/components/QuranPlans";
 import { useAppState } from "@/lib/app-state";
 import {
   errorMessage,
@@ -26,6 +28,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { value: "surahs", label: "Surahs", icon: BookOpen },
   { value: "juz", label: "Juz", icon: Layers },
+  { value: "plans", label: "Plans", icon: CalendarCheck },
   { value: "search", label: "Search", icon: SearchIcon },
   { value: "bookmarks", label: "Bookmarks", icon: Bookmark },
 ] as const;
@@ -484,7 +487,7 @@ export default function QuranHub() {
         <div
           role="tablist"
           aria-label="Qur'an sections"
-          className="grid grid-cols-4 gap-1 rounded-xl bg-muted p-1"
+          className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1 sm:grid-cols-5"
         >
           {TABS.map((t) => {
             const active = tab === t.value;
@@ -521,6 +524,7 @@ export default function QuranHub() {
       >
         {tab === "surahs" && <SurahList />}
         {tab === "juz" && <JuzList />}
+        {tab === "plans" && <QuranPlans />}
         {tab === "search" && <QuranSearch />}
         {tab === "bookmarks" && <BookmarksList />}
       </motion.div>

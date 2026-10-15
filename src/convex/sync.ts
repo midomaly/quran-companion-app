@@ -7,6 +7,7 @@ import {
   sanitizeLastRead,
   sanitizeSearches,
   sanitizeSettings,
+  type CloudSyncDoc,
 } from "../lib/sync-state";
 import { mutation, query } from "./_generated/server";
 
@@ -23,6 +24,8 @@ const settingsValidator = v.object({
   theme: v.union(v.literal("light"), v.literal("dark"), v.literal("system")),
   arabicFontSize: v.number(),
   showTranslation: v.boolean(),
+  // optional so clients predating the translation picker keep working
+  translation: v.optional(v.string()),
   reciter: v.string(),
   continuousPlayback: v.boolean(),
 });
@@ -67,7 +70,12 @@ export const save = mutation({
     }
 
     const incoming = docToLocal({
-      settings: args.settings,
+      settings: {
+        ...args.settings,
+        // `translation` is optional in the validator (older clients omit it);
+        // normalize it here so the shared SyncSettings contract holds.
+        translation: args.settings.translation ?? "en.sahih",
+      },
       settingsUpdatedAt: args.settingsUpdatedAt,
       bookmarks: args.bookmarks,
       lastRead: args.lastRead ?? null,
@@ -80,7 +88,14 @@ export const save = mutation({
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .unique();
 
-    const merged = mergeForSave(existing ?? null, incoming, Date.now());
+    // The stored doc matches the save validator at runtime; the cast bridges
+    // the optional `translation` field in the schema validator to the
+    // normalized CloudSyncDoc shape (sanitizeSettings fills the default).
+    const merged = mergeForSave(
+      (existing as unknown as CloudSyncDoc | null) ?? null,
+      incoming,
+      Date.now(),
+    );
     const doc = {
       userId,
       settings: merged.settings,

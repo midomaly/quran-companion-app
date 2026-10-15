@@ -26,6 +26,7 @@ function local(over: Partial<LocalSyncState> = {}): LocalSyncState {
       theme: "system",
       arabicFontSize: 30,
       showTranslation: true,
+      translation: "en.sahih",
       reciter: "ar.alafasy",
       continuousPlayback: true,
     },
@@ -246,6 +247,16 @@ describe("fingerprint", () => {
     const l = local();
     const doc = { ...cloud(), _id: "abc", _creationTime: 42 } as CloudSyncDoc;
     expect(fingerprint(docToLocal(doc))).toBe(fingerprint(l));
+  });
+
+  test("legacy cloud docs without `translation` default to en.sahih", () => {
+    const legacy = local();
+    const doc = cloud({
+      settings: { ...legacy.settings, translation: undefined },
+    });
+    expect(docToLocal(doc).settings.translation).toBe("en.sahih");
+    // …so the legacy doc still fingerprints equal to a default-settings device.
+    expect(fingerprint(docToLocal(doc))).toBe(fingerprint(local()));
   });
 
   test("any content change changes the fingerprint", () => {

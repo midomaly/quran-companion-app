@@ -41,6 +41,9 @@ const schema = defineSchema(
         theme: v.union(v.literal("light"), v.literal("dark"), v.literal("system")),
         arabicFontSize: v.number(),
         showTranslation: v.boolean(),
+        // verified translation edition id, e.g. "en.sahih" (optional for
+        // docs written before the translation picker existed)
+        translation: v.optional(v.string()),
         reciter: v.string(),
         continuousPlayback: v.boolean(),
       }),

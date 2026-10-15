@@ -21,12 +21,23 @@ export interface SyncSettings {
   theme: "light" | "dark" | "system";
   /** Arabic (Uthmani) font size in px */
   arabicFontSize: number;
-  /** Show the English translation under each ayah */
+  /** Show the translation under each ayah */
   showTranslation: boolean;
+  /** Verified translation edition identifier, e.g. "en.sahih" */
+  translation: string;
   reciter: string;
   /** Keep playing ayah by ayah within a surah */
   continuousPlayback: boolean;
 }
+
+/**
+ * Settings as stored in the cloud doc. `translation` is optional there: docs
+ * written before the translation picker existed lack it, and sanitizeSettings
+ * fills the default for them.
+ */
+export type CloudSyncSettings = Omit<SyncSettings, "translation"> & {
+  translation?: string;
+};
 
 export interface SyncBookmark {
   surah: number;
@@ -43,7 +54,7 @@ export interface SyncLastRead {
 /** The payload of a cloud doc (metadata like _id/userId is stripped). */
 export interface CloudSyncDoc {
   userId?: string;
-  settings: SyncSettings;
+  settings: CloudSyncSettings;
   settingsUpdatedAt: number;
   bookmarks: SyncBookmark[];
   lastRead?: SyncLastRead | null;
@@ -130,6 +141,7 @@ export function sanitizeSettings(
     theme: "system",
     arabicFontSize: DEFAULT_SYNC_FONT_SIZE,
     showTranslation: true,
+    translation: "en.sahih",
     reciter: "ar.alafasy",
     continuousPlayback: true,
   };
@@ -144,6 +156,12 @@ export function sanitizeSettings(
     arabicFontSize: fontSize,
     showTranslation:
       typeof s.showTranslation === "boolean" ? s.showTranslation : base.showTranslation,
+    // Known-edition validation happens client-side (isKnownTranslation); the
+    // server only bounds the string so old clients stay compatible.
+    translation:
+      typeof s.translation === "string" && s.translation.length > 0 && s.translation.length <= 40
+        ? s.translation
+        : base.translation,
     reciter: typeof s.reciter === "string" && s.reciter.length > 0 ? s.reciter : base.reciter,
     continuousPlayback:
       typeof s.continuousPlayback === "boolean" ? s.continuousPlayback : base.continuousPlayback,
@@ -271,6 +289,7 @@ export function fingerprint(state: LocalSyncState): string {
       state.settings.theme,
       state.settings.arabicFontSize,
       state.settings.showTranslation,
+      state.settings.translation,
       state.settings.reciter,
       state.settings.continuousPlayback,
     ],

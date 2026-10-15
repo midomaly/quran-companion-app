@@ -16,7 +16,8 @@ import {
   type ReactNode,
 } from "react";
 import { CloudSync } from "./app-sync";
-import { isKnownReciter, type Reciter } from "./quranApi";
+import { isKnownReciter, isKnownTranslation, type Reciter } from "./quranApi";
+import { DEFAULT_TRANSLATION_ID } from "./translation-editions";
 import type { LocalSyncState } from "./sync-state";
 
 export type ThemeChoice = "light" | "dark" | "system";
@@ -26,8 +27,10 @@ export interface Settings {
   theme: ThemeChoice;
   /** Arabic (Uthmani) font size in px */
   arabicFontSize: number;
-  /** Show the English translation under each ayah */
+  /** Show the translation under each ayah */
   showTranslation: boolean;
+  /** Verified translation edition identifier (see src/lib/translation-editions.ts) */
+  translation: string;
   reciter: Reciter["id"];
   /** Keep playing ayah by ayah within a surah */
   continuousPlayback: boolean;
@@ -45,10 +48,19 @@ export interface LastRead {
   updatedAt: number;
 }
 
+/** A personal note attached to one ayah (device-local). */
+export interface AyahNote {
+  surah: number;
+  ayah: number;
+  text: string;
+  updatedAt: number;
+}
+
 const SETTINGS_KEY = "noor:settings";
 const BOOKMARKS_KEY = "noor:bookmarks";
 const LAST_READ_KEY = "noor:lastRead";
 const RECENT_KEY = "noor:recentSearches";
+const NOTES_KEY = "noor:notes";
 // Freshness stamps for last-writer-wins sync of settings / searches.
 const SETTINGS_AT_KEY = "noor:settingsUpdatedAt";
 const SEARCHES_AT_KEY = "noor:searchesUpdatedAt";
@@ -61,6 +73,7 @@ const DEFAULT_SETTINGS: Settings = {
   theme: "system",
   arabicFontSize: DEFAULT_ARABIC_FONT_SIZE,
   showTranslation: true,
+  translation: DEFAULT_TRANSLATION_ID,
   reciter: "ar.alafasy",
   continuousPlayback: true,
 };
@@ -95,6 +108,10 @@ function loadSettings(): Settings {
       typeof stored.showTranslation === "boolean"
         ? stored.showTranslation
         : DEFAULT_SETTINGS.showTranslation,
+    translation:
+      typeof stored.translation === "string" && isKnownTranslation(stored.translation)
+        ? stored.translation
+        : DEFAULT_SETTINGS.translation,
     reciter:
       typeof stored.reciter === "string" && isKnownReciter(stored.reciter)
         ? stored.reciter
@@ -182,6 +199,30 @@ function loadRecentSearches(): string[] {
   return stored.filter((q): q is string => typeof q === "string" && q.trim().length > 0).slice(0, MAX_RECENT_SEARCHES);
 }
 
+const MAX_NOTE_LENGTH = 2000;
+const MAX_NOTES = 500;
+
+function loadNotes(): AyahNote[] {
+  const stored = safeParse<unknown>(safeGet(NOTES_KEY));
+  if (!Array.isArray(stored)) return [];
+  return stored
+    .filter((n): n is AyahNote => {
+      if (!n || typeof n !== "object") return false;
+      const note = n as Partial<AyahNote>;
+      return (
+        isValidRef(note.surah, note.ayah) &&
+        typeof note.text === "string" &&
+        note.text.trim().length > 0
+      );
+    })
+    .map((n) => ({
+      surah: n.surah,
+      ayah: n.ayah,
+      text: n.text.slice(0, MAX_NOTE_LENGTH),
+      updatedAt: typeof n.updatedAt === "number" ? n.updatedAt : 0,
+    }));
+}
+
 export interface AppStateValue {
   settings: Settings;
   updateSettings: (patch: Partial<Settings>) => void;
@@ -194,6 +235,10 @@ export interface AppStateValue {
   recentSearches: string[];
   addRecentSearch: (query: string) => void;
   clearRecentSearches: () => void;
+  notes: AyahNote[];
+  getNote: (surah: number, ayah: number) => AyahNote | undefined;
+  /** Save (or, with empty text, delete) the note on one ayah. */
+  setNote: (surah: number, ayah: number, text: string) => void;
 }
 
 const AppStateContext = createContext<AppStateValue | null>(null);
@@ -203,6 +248,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>(loadBookmarks);
   const [lastRead, setLastReadState] = useState<LastRead | null>(loadLastRead);
   const [recentSearches, setRecentSearches] = useState<string[]>(loadRecentSearches);
+  const [notes, setNotes] = useState<AyahNote[]>(loadNotes);
   const [settingsUpdatedAt, setSettingsUpdatedAt] = useState<number>(() =>
     loadTimestamp(SETTINGS_AT_KEY),
   );
@@ -294,6 +340,25 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setSearchesUpdatedAt((prev) => bumpTimestamp(prev, SEARCHES_AT_KEY));
   }, []);
 
+  const getNote = useCallback(
+    (surah: number, ayah: number) => notes.find((n) => n.surah === surah && n.ayah === ayah),
+    [notes],
+  );
+
+  const setNote = useCallback((surah: number, ayah: number, text: string) => {
+    const trimmed = text.trim().slice(0, MAX_NOTE_LENGTH);
+    setNotes((prev) => {
+      const without = prev.filter((n) => !(n.surah === surah && n.ayah === ayah));
+      const next = trimmed
+        ? [...without, { surah, ayah, text: trimmed, updatedAt: Date.now() }]
+            .sort((a, b) => a.surah - b.surah || a.ayah - b.ayah)
+            .slice(-MAX_NOTES)
+        : without;
+      safeSet(NOTES_KEY, next);
+      return next;
+    });
+  }, []);
+
   /** Current sync payload — called fresh by the sync engine on each reconcile. */
   const snapshot = useCallback(
     (): LocalSyncState => ({
@@ -315,6 +380,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const nextSettings: Settings = {
       ...incoming.settings,
       reciter,
+      translation: isKnownTranslation(incoming.settings.translation)
+        ? incoming.settings.translation
+        : DEFAULT_TRANSLATION_ID,
       arabicFontSize: clampFontSize(incoming.settings.arabicFontSize),
     };
     const nextBookmarks = [...incoming.bookmarks].sort(
@@ -348,6 +416,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       recentSearches,
       addRecentSearch,
       clearRecentSearches,
+      notes,
+      getNote,
+      setNote,
     }),
     [
       settings,
@@ -361,6 +432,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       recentSearches,
       addRecentSearch,
       clearRecentSearches,
+      notes,
+      getNote,
+      setNote,
     ],
   );
 

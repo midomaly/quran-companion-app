@@ -25,6 +25,7 @@ import {
   docToLocal,
   fingerprint,
   mergeLocalAndCloud,
+  type CloudSyncDoc,
   type LocalSyncState,
 } from "@/lib/sync-state";
 import { useConvex, useMutation, useQuery } from "convex/react";
@@ -40,6 +41,15 @@ export interface SyncBridge {
 const TICK_MS = 1000;
 const SETTLE_MS = 700;
 const RETRY_MS = 5000;
+
+/**
+ * The Convex doc's settings object types `translation` as optional (schema
+ * validator is lenient for older clients); docToLocal → sanitizeSettings
+ * normalizes it to a full SyncSettings, so this cast is safe at runtime.
+ */
+function asCloudDoc(doc: unknown): CloudSyncDoc | null | undefined {
+  return doc as CloudSyncDoc | null | undefined;
+}
 
 /**
  * Gate: outside a <ConvexProvider> (render tests, SSR) there is no client and
@@ -72,7 +82,9 @@ function CloudSyncEngine({ bridge }: { bridge: SyncBridge }) {
     inFlightRef.current = true;
     try {
       const doc = await pushSave({
-        settings: state.settings,
+        // Convex validates against the lenient schema (optional `translation`);
+        // the client always sends the full normalized settings object.
+        settings: state.settings as CloudSyncDoc["settings"],
         settingsUpdatedAt: state.settingsUpdatedAt,
         bookmarks: state.bookmarks,
         lastRead: state.lastRead ?? undefined,
@@ -80,7 +92,7 @@ function CloudSyncEngine({ bridge }: { bridge: SyncBridge }) {
         searchesUpdatedAt: state.searchesUpdatedAt,
       });
       if (syncedUserRef.current !== userId) return; // signed out / switched mid-flight
-      const returned = docToLocal(doc);
+      const returned = docToLocal(asCloudDoc(doc));
       const returnedFp = fingerprint(returned);
       syncedFpRef.current = returnedFp;
       // Adopt server-side merges (e.g. another device's fresher settings)
@@ -113,14 +125,14 @@ function CloudSyncEngine({ bridge }: { bridge: SyncBridge }) {
     if (cloud !== null && cloud.userId !== user._id) return;
 
     const userId = user._id as string;
-    const cloudState = docToLocal(cloud);
+    const cloudState = docToLocal(asCloudDoc(cloud));
     const cloudFp = fingerprint(cloudState);
     const local = bridgeRef.current.snapshot();
     const localFp = fingerprint(local);
 
     // Fresh sign-in or account switch: merge both sides once, then push.
     if (syncedUserRef.current !== userId) {
-      const merged = mergeLocalAndCloud(local, cloud);
+      const merged = mergeLocalAndCloud(local, asCloudDoc(cloud));
       const mergedFp = fingerprint(merged);
       syncedUserRef.current = userId;
       syncedFpRef.current = mergedFp;
@@ -150,7 +162,7 @@ function CloudSyncEngine({ bridge }: { bridge: SyncBridge }) {
           return;
         }
         // Both sides changed: merge, adopt the merge, push it back.
-        const merged = mergeLocalAndCloud(local, cloud);
+        const merged = mergeLocalAndCloud(local, asCloudDoc(cloud));
         const mergedFp = fingerprint(merged);
         bridgeRef.current.apply(merged);
         syncedFpRef.current = mergedFp;

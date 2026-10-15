@@ -11,7 +11,7 @@
 import { PRAYER_LABELS, formatHours } from "@/lib/prayerTimes";
 import {
   REMINDABLE_PRAYERS,
-  playChime,
+  playReminderSound,
   prayerInstant,
   resolvePrayerLocation,
   shiftDateParts,
@@ -71,7 +71,14 @@ export function PrayerReminderHost() {
             /* some browsers block constructor outside a worker */
           }
         }
-        playChime();
+        if (settings.reminders.vibrate) {
+          try {
+            navigator.vibrate?.([80, 60, 80]);
+          } catch {
+            /* vibration unsupported */
+          }
+        }
+        playReminderSound(settings.reminders.sound);
         toast(body);
       }
     };

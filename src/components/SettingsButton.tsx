@@ -47,6 +47,7 @@ import {
   type ThemeChoice,
 } from "@/lib/app-state";
 import { useAuth } from "@/hooks/use-auth";
+import { LANGUAGES, useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router";
 
@@ -157,6 +158,7 @@ function AccountSectionInner({ close }: { close: () => void }) {
  */
 export function SettingsButton({ className }: { className?: string }) {
   const { settings, updateSettings } = useAppState();
+  const { lang, setLang, t } = useI18n();
   const [open, setOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -225,6 +227,38 @@ export function SettingsButton({ className }: { className?: string }) {
                   );
                 })}
               </div>
+            </section>
+
+            {/* Language */}
+            <section className="flex flex-col gap-3">
+              <SectionTitle>{t("common.language")}</SectionTitle>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {LANGUAGES.map((l) => {
+                  const active = lang === l.id;
+                  return (
+                    <button
+                      key={l.id}
+                      type="button"
+                      onClick={() => setLang(l.id)}
+                      className={cn(
+                        "flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors",
+                        active
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                      )}
+                      aria-pressed={active}
+                    >
+                      {active && <Check className="size-3.5" />}
+                      {l.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs leading-5 text-muted-foreground">
+                Qur&apos;an translations stay in their verified source languages
+                (English, French, Hausa) — interface labels switch to your
+                chosen language.
+              </p>
             </section>
 
             {/* Reading */}

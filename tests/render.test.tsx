@@ -8,6 +8,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { AppStateProvider } from "../src/lib/app-state";
+import { I18nProvider } from "../src/lib/i18n";
 import AppShell from "../src/components/AppShell";
 import Home from "../src/pages/Home";
 import QuranHub from "../src/pages/QuranHub";
@@ -22,6 +23,7 @@ import CalendarPage from "../src/pages/CalendarPage";
 function render(path: string): string {
   const html = renderToString(
     <MemoryRouter initialEntries={[path]}>
+      <I18nProvider>
       <AppStateProvider>
         <Routes>
           <Route element={<AppShell />}>
@@ -37,6 +39,7 @@ function render(path: string): string {
           </Route>
         </Routes>
       </AppStateProvider>
+      </I18nProvider>
     </MemoryRouter>,
   );
   // React SSR serializes adjacent text nodes with "<!-- -->" separators

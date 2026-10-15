@@ -8,6 +8,7 @@ import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 import { AppStateProvider } from "@/lib/app-state";
+import { I18nProvider } from "@/lib/i18n";
 import "./index.css";
 
 // Lazy load route components for better code splitting
@@ -24,7 +25,14 @@ const Tasbih = lazy(() => import("./pages/Tasbih.tsx"));
 const Duas = lazy(() => import("./pages/Duas.tsx"));
 const Hadith = lazy(() => import("./pages/Hadith.tsx"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage.tsx"));
+const Reminders = lazy(() => import("./pages/Reminders.tsx"));
+const Ramadhan = lazy(() => import("./pages/Ramadhan.tsx"));
+const Mosques = lazy(() => import("./pages/Mosques.tsx"));
+const Learn = lazy(() => import("./pages/Learn.tsx"));
+const Downloads = lazy(() => import("./pages/Downloads.tsx"));
+const Tracker = lazy(() => import("./pages/Tracker.tsx"));
 import { PrayerReminderHost } from "@/components/PrayerReminderHost";
+import { ReminderHost } from "@/components/ReminderHost";
 
 // Simple loading fallback for route transitions
 function RouteLoading() {
@@ -126,6 +134,7 @@ createRoot(document.getElementById("root")!).render(
         <VlyToolbar />
       </ToolbarErrorBoundary>
       <ConvexAuthProvider client={convex}>
+        <I18nProvider>
         <AppStateProvider>
           <BrowserRouter>
             <RouteSyncer />
@@ -142,6 +151,12 @@ createRoot(document.getElementById("root")!).render(
                   <Route path="/duas" element={<Duas />} />
                   <Route path="/hadith" element={<Hadith />} />
                   <Route path="/calendar" element={<CalendarPage />} />
+                  <Route path="/reminders" element={<Reminders />} />
+                  <Route path="/ramadhan" element={<Ramadhan />} />
+                  <Route path="/mosques" element={<Mosques />} />
+                  <Route path="/learn" element={<Learn />} />
+                  <Route path="/downloads" element={<Downloads />} />
+                  <Route path="/tracker" element={<Tracker />} />
                 </Route>
                 <Route
                   path="/auth"
@@ -160,8 +175,10 @@ createRoot(document.getElementById("root")!).render(
             </Suspense>
           </BrowserRouter>
         </AppStateProvider>
+        </I18nProvider>
         <Toaster />
         <PrayerReminderHost />
+        <ReminderHost />
       </ConvexAuthProvider>
     </RootErrorBoundary>
   </StrictMode>,

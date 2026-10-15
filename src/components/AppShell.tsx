@@ -1,14 +1,20 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  Bell,
   BookOpen,
   CalendarDays,
   CircleDot,
   Clock,
   Compass,
+  Download,
+  GraduationCap,
   Hand,
   Home as HomeIcon,
   LayoutGrid,
+  ListChecks,
+  MapPin,
+  MoonStar,
   ScrollText,
   WifiOff,
 } from "lucide-react";
@@ -23,22 +29,29 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { useI18n } from "@/lib/i18n";
 
 const SPLASH_KEY = "noor:splashSeen";
 const SPLASH_MS = 2100;
 
 const NAV_ITEMS = [
-  { to: "/", label: "Home", icon: HomeIcon, end: true },
-  { to: "/quran", label: "Quran", icon: BookOpen, end: false },
-  { to: "/prayer", label: "Prayer", icon: Clock, end: false },
-  { to: "/calendar", label: "Calendar", icon: CalendarDays, end: false },
+  { to: "/", labelKey: "nav.home", label: "Home", icon: HomeIcon, end: true },
+  { to: "/quran", labelKey: "nav.quran", label: "Quran", icon: BookOpen, end: false },
+  { to: "/prayer", labelKey: "nav.prayer", label: "Prayer", icon: Clock, end: false },
+  { to: "/calendar", labelKey: "nav.calendar", label: "Calendar", icon: CalendarDays, end: false },
 ] as const;
 
 const MORE_LINKS = [
-  { to: "/qibla", label: "Qibla compass", icon: Compass },
-  { to: "/tasbih", label: "Tasbih counter", icon: CircleDot },
-  { to: "/duas", label: "Duas library", icon: Hand },
-  { to: "/hadith", label: "Hadith library", icon: ScrollText },
+  { to: "/qibla", labelKey: "nav.qibla", label: "Qibla compass", icon: Compass },
+  { to: "/tasbih", labelKey: "nav.tasbih", label: "Tasbih counter", icon: CircleDot },
+  { to: "/tracker", labelKey: "nav.tracker", label: "Worship tracker", icon: ListChecks },
+  { to: "/duas", labelKey: "nav.duas", label: "Duas library", icon: Hand },
+  { to: "/hadith", labelKey: "nav.hadith", label: "Hadith library", icon: ScrollText },
+  { to: "/learn", labelKey: "nav.learn", label: "Learning center", icon: GraduationCap },
+  { to: "/ramadan", labelKey: "nav.ramadan", label: "Ramadan & Zakat", icon: MoonStar },
+  { to: "/reminders", labelKey: "nav.reminders", label: "Reminders", icon: Bell },
+  { to: "/mosques", labelKey: "nav.mosques", label: "Mosque finder", icon: MapPin },
+  { to: "/downloads", labelKey: "nav.downloads", label: "Offline & downloads", icon: Download },
 ] as const;
 
 /** Full-screen splash shown once per browser session. */
@@ -104,6 +117,7 @@ function Splash({ onDone }: { onDone: () => void }) {
 /** Bottom-nav "More" entry: a sheet linking the remaining sections. */
 function MoreMenu() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const go = (to: string) => {
     setOpen(false);
@@ -118,13 +132,13 @@ function MoreMenu() {
           aria-label="More sections"
         >
           <LayoutGrid className="size-5" aria-hidden="true" />
-          <span>More</span>
+          <span>{t("nav.more")}</span>
           <span className="mt-0.5 h-1 w-1 rounded-full bg-gold opacity-0" />
         </button>
       </SheetTrigger>
       <SheetContent side="bottom" className="max-h-[80vh] overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>More</SheetTitle>
+          <SheetTitle>{t("nav.more")}</SheetTitle>
         </SheetHeader>
         <div className="grid grid-cols-2 gap-2 px-4 pb-6">
           {MORE_LINKS.map((link) => {
@@ -140,7 +154,7 @@ function MoreMenu() {
                   <Icon className="size-4" />
                 </span>
                 <span className="truncate text-sm font-semibold tracking-tight">
-                  {link.label}
+                  {t(link.labelKey)}
                 </span>
               </button>
             );
@@ -158,6 +172,7 @@ function MoreMenu() {
 export default function AppShell() {
   const location = useLocation();
   const online = useOnline();
+  const { t } = useI18n();
   const [showSplash, setShowSplash] = useState(() => {
     try {
       return !sessionStorage.getItem(SPLASH_KEY);
@@ -223,7 +238,7 @@ export default function AppShell() {
                 {({ isActive }) => (
                   <>
                     <Icon className="size-5" aria-hidden="true" />
-                    <span>{item.label}</span>
+                    <span>{t(item.labelKey)}</span>
                     <span
                       className={cn(
                         "mt-0.5 h-1 w-1 rounded-full bg-gold transition-opacity",

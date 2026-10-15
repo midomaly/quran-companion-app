@@ -15,24 +15,32 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatGregorianLong, formatHijri, formatHijriArabic } from "@/lib/dates";
 import {
   CITY_PRESETS,
+  OFFSET_LIMIT,
   REMINDABLE_PRAYERS,
+  REMINDER_SOUNDS,
   formatCountdown,
   nextPrayer,
-  playChime,
+  playReminderSound,
   prayerInstant,
   resolvePrayerLocation,
   shiftDateParts,
   timesForDate,
   usePrayerSettings,
+  type PrayerAppSettings,
+  type ReminderSound,
+  type ResolvedPrayerLocation,
 } from "@/lib/prayerSettings";
 import {
   CALCULATION_METHODS,
   PRAYER_LABELS,
+  PRAYER_ORDER,
   formatHours,
   type PrayerName,
+  type PrayerTimes,
 } from "@/lib/prayerTimes";
 import {
   Bell,
@@ -157,7 +165,14 @@ export default function Prayer() {
   };
 
   const testAlarm = () => {
-    playChime();
+    playReminderSound(settings.reminders.sound);
+    if (settings.reminders.vibrate) {
+      try {
+        navigator.vibrate?.([80, 60, 80]);
+      } catch {
+        /* vibration unsupported */
+      }
+    }
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
       try {
         new Notification("Noor Al-Islam", {
@@ -219,22 +234,10 @@ export default function Prayer() {
                 Could not get your location — choose a city below instead.
               </p>
             )}
-            <Select
-              onValueChange={(cityId) =>
-                update({ location: { mode: "city", cityId } })
-              }
-            >
-              <SelectTrigger className={selectClass} aria-label="Choose a city">
-                <SelectValue placeholder="Choose a city…" />
-              </SelectTrigger>
-              <SelectContent>
-                {CITY_PRESETS.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}, {c.country}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CityPicker
+              selectedId={settings.location.cityId}
+              onPick={(cityId) => update({ location: { mode: "city", cityId } })}
+            />
           </CardContent>
         </Card>
       ) : (
@@ -360,6 +363,9 @@ export default function Prayer() {
             </CardContent>
           </Card>
 
+          {/* -------- Weekly / monthly timetables -------- */}
+          <TimetableCard resolved={resolved} settings={settings} now={now} />
+
           {/* -------- Calculation & alarm settings -------- */}
           <Card className="border-border/70 shadow-none">
             <CardHeader className="pb-2">
@@ -402,6 +408,71 @@ export default function Prayer() {
                 />
               </div>
 
+              {/* Manual per-prayer adjustments */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Manual adjustments (minutes)</Label>
+                  {Object.keys(settings.offsets).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => update({ offsets: {} })}
+                      className="cursor-pointer text-xs font-medium text-primary hover:underline"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {(PRAYER_ORDER.filter((n) => n !== "sunrise") as PrayerName[]).map((name) => {
+                    const value = settings.offsets[name] ?? 0;
+                    const setDelta = (delta: number) => {
+                      const next = Math.max(
+                        -OFFSET_LIMIT,
+                        Math.min(OFFSET_LIMIT, value + delta),
+                      );
+                      const offsets = { ...settings.offsets };
+                      if (next === 0) delete offsets[name];
+                      else offsets[name] = next;
+                      update({ offsets });
+                    };
+                    return (
+                      <div
+                        key={name}
+                        className="flex items-center justify-between rounded-lg border border-border bg-card px-2 py-1.5"
+                      >
+                        <span className="text-xs text-muted-foreground">
+                          {PRAYER_LABELS[name]}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            aria-label={`Adjust ${PRAYER_LABELS[name]} earlier`}
+                            onClick={() => setDelta(-1)}
+                            className="flex size-6 cursor-pointer items-center justify-center rounded border border-border text-sm leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            −
+                          </button>
+                          <span className="w-8 text-center text-xs font-semibold tabular-nums">
+                            {value > 0 ? `+${value}` : value}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Adjust ${PRAYER_LABELS[name]} later`}
+                            onClick={() => setDelta(1)}
+                            className="flex size-6 cursor-pointer items-center justify-center rounded border border-border text-sm leading-none text-muted-foreground hover:bg-muted hover:text-foreground"
+                          >
+                            +
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Nudge each time to match your local mosque&apos;s clock.
+                </p>
+              </div>
+
               <div className="flex flex-col gap-1.5">
                 <Label className="text-sm">Alarm timing</Label>
                 <Select
@@ -419,6 +490,43 @@ export default function Prayer() {
                     <SelectItem value="10">10 minutes before</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-sm">Reminder sound</Label>
+                <Select
+                  value={settings.reminders.sound}
+                  onValueChange={(v) => update({ reminders: { sound: v as ReminderSound } })}
+                >
+                  <SelectTrigger className={selectClass} aria-label="Reminder sound">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REMINDER_SOUNDS.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  “Adhan (full)” streams the recorded adhan from islamcan.com;
+                  if it can’t load, the chime plays instead.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-card px-3.5 py-3">
+                <div className="flex flex-col gap-0.5">
+                  <Label className="text-sm">Vibration</Label>
+                  <span className="text-xs text-muted-foreground">
+                    Buzz at each reminder (on supported devices)
+                  </span>
+                </div>
+                <Switch
+                  checked={settings.reminders.vibrate}
+                  onCheckedChange={(checked) => update({ reminders: { vibrate: checked } })}
+                  aria-label="Vibrate at reminders"
+                />
               </div>
 
               <div className="flex flex-col gap-2">
@@ -447,36 +555,31 @@ export default function Prayer() {
                   Test alarm
                 </Button>
                 <p className="text-xs leading-5 text-muted-foreground">
-                  Alarms ring while the app is open (a chime plus a notification
-                  if allowed). They stay on this device — reminders are local by
-                  design, like an alarm clock.
+                  Alarms ring while the app is open (chosen sound plus a
+                  notification if allowed). They stay on this device — reminders
+                  are local by design, like an alarm clock. Browsers cannot wake
+                  a closed tab without a push server.
                 </p>
               </div>
 
-              {/* Location switcher for city mode */}
+              {/* Location switcher (searchable city list) */}
               <div className="flex flex-col gap-1.5">
                 <Label className="text-sm">Location</Label>
-                <div className="flex gap-2">
-                  <Select
-                    value={settings.location.mode === "city" ? (settings.location.cityId ?? "") : "device"}
-                    onValueChange={(value) => {
-                      if (value === "device") requestDeviceLocation();
-                      else update({ location: { mode: "city", cityId: value } });
-                    }}
-                  >
-                    <SelectTrigger className={selectClass} aria-label="Location">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="device">My location</SelectItem>
-                      {CITY_PRESETS.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}, {c.country}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Button
+                  variant="outline"
+                  className="cursor-pointer justify-start gap-2"
+                  onClick={requestDeviceLocation}
+                  disabled={geoState === "loading"}
+                >
+                  <MapPin className="size-4" />
+                  {settings.location.mode === "device"
+                    ? "Using my location — tap to refresh"
+                    : "Use my location (GPS)"}
+                </Button>
+                <CityPicker
+                  selectedId={settings.location.cityId}
+                  onPick={(cityId) => update({ location: { mode: "city", cityId } })}
+                />
               </div>
             </CardContent>
           </Card>
@@ -505,4 +608,218 @@ function formatInZone(instant: number, timeZone: string): string {
   } catch {
     return formatHours(null);
   }
+}
+
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_LONG = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** Searchable city list (offline — filters the local preset table). */
+function CityPicker({
+  selectedId,
+  onPick,
+}: {
+  selectedId?: string;
+  onPick: (cityId: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const all = CITY_PRESETS;
+    if (!q) return all.slice(0, 20);
+    return all.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) || c.country.toLowerCase().includes(q),
+    );
+  }, [query]);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search city or country…"
+        aria-label="Search city or country"
+        className="h-10 w-full rounded-xl border border-input bg-card px-3.5 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40"
+      />
+      <div className="max-h-44 overflow-y-auto rounded-xl border border-border bg-card">
+        {filtered.length === 0 ? (
+          <p className="px-3 py-3 text-xs text-muted-foreground">
+            No city matches “{query}” — try a bigger nearby city.
+          </p>
+        ) : (
+          <ul>
+            {filtered.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => onPick(c.id)}
+                  className={
+                    "flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted " +
+                    (selectedId === c.id ? "text-primary font-semibold" : "text-foreground")
+                  }
+                >
+                  <span className="truncate">
+                    {c.name}
+                    <span className="text-muted-foreground"> · {c.country}</span>
+                  </span>
+                  {selectedId === c.id && (
+                    <span className="text-xs font-medium text-primary">selected</span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {!query && (
+        <p className="text-xs text-muted-foreground">
+          Showing {filtered.length} of {CITY_PRESETS.length} cities — search to
+          narrow down.
+        </p>
+      )}
+    </div>
+  );
+}
+
+interface TimetableRow {
+  label: string;
+  sub: string;
+  times: PrayerTimes;
+}
+
+function TimetableTable({ rows }: { rows: TimetableRow[] }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[420px] border-collapse text-xs">
+        <thead>
+          <tr className="text-muted-foreground">
+            <th className="px-2 py-2 text-left font-semibold">Day</th>
+            {(PRAYER_ORDER as PrayerName[]).map((name) => (
+              <th key={name} className="px-2 py-2 text-right font-semibold">
+                {name === "sunrise" ? "Rise" : PRAYER_LABELS[name]}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={row.sub + i} className="border-t border-border/60">
+              <td className="px-2 py-2 whitespace-nowrap">
+                <span className="font-semibold">{row.label}</span>{" "}
+                <span className="text-muted-foreground">{row.sub}</span>
+              </td>
+              {(PRAYER_ORDER as PrayerName[]).map((name) => (
+                <td key={name} className="px-2 py-2 text-right tabular-nums">
+                  {formatHours(row.times[name])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Weekly and monthly timetables computed on-device (offline by design). */
+function TimetableCard({
+  resolved,
+  settings,
+  now,
+}: {
+  resolved: ResolvedPrayerLocation;
+  settings: PrayerAppSettings;
+  now: number;
+}) {
+  const [monthOffset, setMonthOffset] = useState(0);
+
+  const weekRows = useMemo<TimetableRow[]>(
+    () =>
+      Array.from({ length: 7 }, (_, i) => {
+        const date = shiftDateParts(now, i);
+        const weekday = new Date(
+          Date.UTC(date.year, date.month - 1, date.day),
+        ).getUTCDay();
+        return {
+          label: i === 0 ? "Today" : WEEKDAY_SHORT[weekday],
+          sub: `${date.day} ${MONTH_LONG[date.month - 1].slice(0, 3)}`,
+          times: timesForDate(resolved, date, settings),
+        };
+      }),
+    [now, resolved, settings],
+  );
+
+  const monthRows = useMemo<TimetableRow[]>(() => {
+    const base = shiftDateParts(now, 0);
+    const d = new Date(Date.UTC(base.year, base.month - 1 + monthOffset, 1));
+    const year = d.getUTCFullYear();
+    const month = d.getUTCMonth() + 1;
+    const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return Array.from({ length: days }, (_, i) => {
+      const date = { year, month, day: i + 1 };
+      const weekday = new Date(Date.UTC(year, month - 1, i + 1)).getUTCDay();
+      return {
+        label: String(i + 1),
+        sub: WEEKDAY_SHORT[weekday],
+        times: timesForDate(resolved, date, settings),
+      };
+    });
+  }, [now, monthOffset, resolved, settings]);
+
+  const monthDate = useMemo(() => {
+    const base = shiftDateParts(now, 0);
+    const d = new Date(Date.UTC(base.year, base.month - 1 + monthOffset, 1));
+    return `${MONTH_LONG[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  }, [now, monthOffset]);
+
+  return (
+    <Card className="border-border/70 shadow-none">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">Timetables</CardTitle>
+        <CardDescription>
+          Computed on this device — available offline. Method shown in
+          Calculation & alarms.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Tabs defaultValue="week">
+          <TabsList className="mb-3">
+            <TabsTrigger value="week">Week</TabsTrigger>
+            <TabsTrigger value="month">Month</TabsTrigger>
+          </TabsList>
+          <TabsContent value="week">
+            <TimetableTable rows={weekRows} />
+          </TabsContent>
+          <TabsContent value="month" className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <Button
+                variant="outline"
+                size="sm"
+                className="cursor-pointer"
+                onClick={() => setMonthOffset((m) => m - 1)}
+                aria-label="Previous month"
+              >
+                ‹
+              </Button>
+              <span className="text-sm font-semibold">{monthDate}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="cursor-pointer"
+                onClick={() => setMonthOffset((m) => m + 1)}
+                aria-label="Next month"
+              >
+                ›
+              </Button>
+            </div>
+            <TimetableTable rows={monthRows} />
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+  );
 }

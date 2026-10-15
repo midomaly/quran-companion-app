@@ -281,6 +281,72 @@ export function offlineSurahCount(): number {
   return countKeys(CACHE_AR_PREFIX);
 }
 
+export interface CacheEntry {
+  surah: number;
+  /** Uthmani text saved? */
+  arabic: boolean;
+  /** Translation saved? */
+  translation: boolean;
+  /** Approximate size of the saved JSON (UTF-16 units ≈ 1–2 bytes each). */
+  bytes: number;
+}
+
+/** Per-surah cache inventory for the download manager. Sorted by surah. */
+export function listQuranCache(): CacheEntry[] {
+  const map = new Map<number, CacheEntry>();
+  const entryFor = (surah: number): CacheEntry => {
+    let e = map.get(surah);
+    if (!e) {
+      e = { surah, arabic: false, translation: false, bytes: 0 };
+      map.set(surah, e);
+    }
+    return e;
+  };
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      const value = localStorage.getItem(key) ?? "";
+      if (key.startsWith(CACHE_AR_PREFIX)) {
+        const surah = Number(key.slice(CACHE_AR_PREFIX.length));
+        if (Number.isInteger(surah) && surah >= 1 && surah <= 114) {
+          const e = entryFor(surah);
+          e.arabic = true;
+          e.bytes += value.length;
+        }
+      } else if (key.startsWith(CACHE_EN_PREFIX)) {
+        const surah = Number(key.slice(CACHE_EN_PREFIX.length));
+        if (Number.isInteger(surah) && surah >= 1 && surah <= 114) {
+          const e = entryFor(surah);
+          e.translation = true;
+          e.bytes += value.length;
+        }
+      }
+    }
+  } catch {
+    /* storage unavailable */
+  }
+  return [...map.values()].sort((a, b) => a.surah - b.surah);
+}
+
+/** Remove the saved text of one surah (both editions). */
+export function removeSurahCache(surah: number): void {
+  try {
+    localStorage.removeItem(`${CACHE_AR_PREFIX}${surah}`);
+    localStorage.removeItem(`${CACHE_EN_PREFIX}${surah}`);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** Download (fetch + cache) a surah's Arabic and translation for offline use. */
+export async function downloadSurah(surah: number): Promise<void> {
+  await Promise.all([
+    fetchSurahArabic(surah),
+    fetchSurahTranslation(surah),
+  ]);
+}
+
 /** Remove all cached Qur'an text from this device. Returns how many surahs were removed. */
 export function clearQuranCache(): number {
   const removed = countKeys(CACHE_AR_PREFIX) + countKeys(CACHE_EN_PREFIX);

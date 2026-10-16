@@ -151,11 +151,15 @@ export function hijriToGregorian(day: number, month: number, year: number): Date
   ) {
     return null;
   }
-  // Civil (tabular) Islamic calendar estimate — only a search seed.
+  // Civil (tabular) Islamic calendar estimate — only a search seed. The
+  // constant is calibrated so the seed lands within days of the real Umm
+  // al-Qura date in the modern era; the window below covers a full lunar
+  // month anyway, because correctness comes from the Intl verification, never
+  // from this arithmetic.
   const jd =
-    Math.floor((11 * year + 3) / 30) + 354 * year + 30 * month - Math.floor((month - 1) / 2) + day + 1948438;
+    Math.floor((11 * year + 3) / 30) + 354 * year + 30 * month - Math.floor((month - 1) / 2) + day + 1948055;
   const seed = (jd - 2440588) * 86400000;
-  for (let i = -10; i <= 10; i++) {
+  for (let i = -32; i <= 32; i++) {
     const d = new Date(seed + i * 86400000);
     d.setHours(12, 0, 0, 0); // midday: safe across time zones
     const h = hijriParts(d, 0);

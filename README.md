@@ -110,6 +110,7 @@ bun tsc -b --noEmit # typecheck
 bun run lint        # eslint
 bun test            # unit tests (render smoke, metadata, prayer times, sync rules)
 bun run verify:data # live check of all 114 surahs/6,236 ayahs against the source
+bun scripts/generate-icons.ts # regenerate the PWA icons from public/logo.svg
 ```
 
 ### Project layout
@@ -133,6 +134,9 @@ bun run verify:data # live check of all 114 surahs/6,236 ayahs against the sourc
 - `src/components/PrayerReminderHost.tsx` / `src/components/ReminderHost.tsx` —
   adhān and personal-reminder engines (run app-wide)
 - `src/data/` — curated duas, hadith and learning content
+- `public/sw.js` + `public/icons/` — offline-shell service worker (registered
+  in production builds only) and the PNG manifest icons Chrome needs for
+  "Install app" / "Add to Home screen" (regenerate with the script above)
 - `src/pages/` — `Home`, `QuranHub`, `Reader`, `Prayer`, `Qibla`, `Tasbih`,
   `Duas`, `Hadith`, `CalendarPage`, `Reminders`, `Ramadhan`, `Mosques`,
   `Learn`, `Downloads`, `Tracker`, plus `Auth` and `Dashboard`

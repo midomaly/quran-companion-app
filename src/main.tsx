@@ -101,6 +101,22 @@ class RootErrorBoundary extends React.Component<
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
+// PWA: register the offline-shell service worker in production only (the dev
+// preview relies on HMR, which a service worker would fight) and only in the
+// top window (the platform preview embeds the app in an iframe, where service
+// worker registration is blocked by the browser).
+if (
+  import.meta.env.PROD &&
+  "serviceWorker" in navigator &&
+  window.top === window.self
+) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
+      /* installability is best-effort — the app works without it */
+    });
+  });
+}
+
 
 
 function RouteSyncer() {

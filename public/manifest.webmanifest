@@ -2,11 +2,31 @@
   "name": "Noor Al-Islam — Qur'an & Muslim Companion",
   "short_name": "Noor Al-Islam",
   "description": "Read the complete Holy Qur'an in Uthmani script with verified translation, audio recitation, bookmarks and offline reading.",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0b3d2e",
   "theme_color": "#0b5540",
   "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "/logo.svg",
       "sizes": "any",

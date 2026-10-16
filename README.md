@@ -126,11 +126,24 @@ also be started by hand: Actions → **Build Android APK** → Run workflow), wh
    [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap) against the
    deployed site and attaches it to a GitHub release.
 
-**APK download link** (always the newest build):
+**APK download link** (always the newest build) — a URL *template*: replace
+`<owner>` with your GitHub username or organization and `<repo>` with the
+repository name. It resolves only after the project is pushed to GitHub and
+the workflow has produced its first release.
 
 ```
-https://github.com/<owner>/<repo>/releases/latest/download/app-release-signed.apk
+https://<owner>.github.io/<repo>/            <- the deployed web app
+https://github.com/<owner>/<repo>/releases/latest/download/app-release-signed.apk   <- the APK
 ```
+
+Concrete example for user `YOUR-USERNAME`, repo `noor-al-islam`:
+
+```
+https://github.com/YOUR-USERNAME/noor-al-islam/releases/latest/download/app-release-signed.apk
+```
+
+(Easier to browse: `https://github.com/<owner>/<repo>/releases/latest` lists
+the assets — tap `app-release-signed.apk`.)
 
 One-time setup (repository → Settings):
 

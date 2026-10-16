@@ -99,11 +99,11 @@ export default function Reader() {
   const [tafsirAyah, setTafsirAyah] = useState<number | null>(null);
   const [tafsirSource, setTafsirSource] = useState(TAFSIRS[0].id);
   const [tafsirText, setTafsirText] = useState("");
-  const [tafsirStatus, setTafsirStatus] = useState<"idle" | "loading" | "ready" | "error">(
-    "idle",
-  );
   const [tafsirError, setTafsirError] = useState("");
   const [tafsirKey, setTafsirKey] = useState(0);
+  /** Which request produced the text/error above — anything else (a new ayah,
+   *  source or retry) renders as "loading" until its response lands. */
+  const [tafsirResultKey, setTafsirResultKey] = useState<string | null>(null);
 
   // Personal notes (device-local)
   const [noteAyah, setNoteAyah] = useState<number | null>(null);
@@ -358,27 +358,31 @@ export default function Reader() {
   /* ---------------------------------------------------------------- */
   useEffect(() => {
     if (tafsirAyah === null || !arabic) return;
-    let cancelled = false;
     const target = arabic.find((a) => a.n === tafsirAyah);
     if (!target) return;
-    setTafsirStatus("loading");
-    setTafsirText("");
-    setTafsirError("");
+    let cancelled = false;
+    const key = `${tafsirAyah}:${tafsirSource}:${tafsirKey}`;
     fetchTafsir(target.g, tafsirSource)
       .then((text) => {
         if (cancelled) return;
         setTafsirText(text);
-        setTafsirStatus("ready");
+        setTafsirError("");
+        setTafsirResultKey(key);
       })
       .catch((err) => {
         if (cancelled) return;
+        setTafsirText("");
         setTafsirError(errorMessage(err));
-        setTafsirStatus("error");
+        setTafsirResultKey(key);
       });
     return () => {
       cancelled = true;
     };
   }, [tafsirAyah, tafsirSource, tafsirKey, arabic]);
+
+  const tafsirRequestKey =
+    tafsirAyah === null ? null : `${tafsirAyah}:${tafsirSource}:${tafsirKey}`;
+  const tafsirLoading = tafsirRequestKey !== null && tafsirResultKey !== tafsirRequestKey;
 
   /* ---------------------------------------------------------------- */
   /* Notes                                                             */
@@ -1059,12 +1063,12 @@ export default function Reader() {
             ))}
           </div>
 
-          {tafsirStatus === "loading" && (
+          {tafsirLoading && (
             <p className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" /> Loading tafsir…
             </p>
           )}
-          {tafsirStatus === "error" && (
+          {!tafsirLoading && tafsirError !== "" && (
             <div className="py-4">
               <p className="text-sm text-muted-foreground">{tafsirError}</p>
               <Button
@@ -1077,7 +1081,7 @@ export default function Reader() {
               </Button>
             </div>
           )}
-          {tafsirStatus === "ready" && (
+          {!tafsirLoading && tafsirError === "" && tafsirText !== "" && (
             <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/90">
               {tafsirText}
             </p>

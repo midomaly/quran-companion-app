@@ -111,7 +111,7 @@ function saveStore(store: TrackerStore): void {
 export default function Tracker() {
   const [store, setStore] = useState<TrackerStore>(loadStore);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [today, setToday] = useState(() => dayKey(new Date()));
+  const today = dayKey(new Date());
 
   useEffect(() => saveStore(store), [store]);
 
@@ -183,9 +183,6 @@ export default function Tracker() {
       charity: all.reduce((s, d) => s + d.charity, 0),
     };
   }, [store.days]);
-
-  const numericStep = (value: number, delta: number, max = 200) =>
-    Math.max(0, Math.min(max, value + delta));
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-5 py-6">

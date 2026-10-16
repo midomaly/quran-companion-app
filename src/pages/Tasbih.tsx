@@ -37,7 +37,6 @@ const BUILTIN_DHIKRS: Dhikr[] = [
 const TARGETS = [33, 99, 100] as const;
 
 const STORAGE_KEY = "noor:tasbih";
-const MAX_UNDO = 300;
 const MAX_SESSIONS = 120;
 const MAX_CUSTOM = 24;
 
@@ -144,7 +143,7 @@ function dayKey(ms: number): string {
  */
 export default function Tasbih() {
   const [state, setState] = useState<StoredState>(loadState);
-  const [undoStack, setUndoStack] = useState<number[]>([]);
+  const [now, setNow] = useState(() => new Date());
   const [pulse, setPulse] = useState(0);
   const [confirmReset, setConfirmReset] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -217,22 +216,19 @@ export default function Tasbih() {
         sessions: complete ? logSession({ ...prev, count: prev.count }, currentDhikr) : prev.sessions,
       };
     });
-    setUndoStack((stack) => [...stack, Date.now()].slice(-MAX_UNDO));
     setPulse((p) => p + 1);
-  }, [state.vibrate, state.sound, logSession]);
+  }, [logSession]);
 
   const undo = useCallback(() => {
     setState((prev) => {
       if (prev.count <= 0) return prev;
       return { ...prev, count: prev.count - 1, total: Math.max(0, prev.total - 1) };
     });
-    setUndoStack((stack) => stack.slice(0, -1));
   }, []);
 
   /** Reset the count, logging the session first. */
   const doReset = useCallback(() => {
     setState((prev) => ({ ...prev, count: 0, sessions: logSession(prev, dhikr) }));
-    setUndoStack([]);
     setConfirmReset(false);
   }, [dhikr, logSession]);
 
@@ -243,7 +239,6 @@ export default function Tasbih() {
       count: 0,
       sessions: logSession(prev, dhikr),
     }));
-    setUndoStack([]);
   };
 
   const setTarget = (t: number) => {
@@ -253,7 +248,6 @@ export default function Tasbih() {
       count: 0,
       sessions: logSession(prev, dhikr),
     }));
-    setUndoStack([]);
   };
 
   const addCustomDhikr = () => {
@@ -308,10 +302,18 @@ export default function Tasbih() {
     return () => window.removeEventListener("keydown", onKey);
   }, [increment, undo]);
 
+  // Clock for the day-based stats: kept in state so render stays pure
+  // (Date.now() is not allowed during render) and ticked once a minute.
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   // Daily statistics from session history + the live count.
   const stats = useMemo(() => {
-    const today = dayKey(Date.now());
-    const yesterday = dayKey(Date.now() - 86400000);
+    const nowMs = now.getTime();
+    const today = dayKey(nowMs);
+    const yesterday = dayKey(nowMs - 86400000);
     const perDay = new Map<string, number>();
     for (const s of state.sessions) {
       const k = dayKey(s.endedAt);
@@ -326,11 +328,11 @@ export default function Tasbih() {
     // Last 7 days as bars (oldest → today).
     const week: { day: string; total: number }[] = [];
     for (let i = 6; i >= 0; i--) {
-      const k = dayKey(Date.now() - i * 86400000);
+      const k = dayKey(nowMs - i * 86400000);
       week.push({ day: k, total: k === today ? todayTotal : (perDay.get(k) ?? 0) });
     }
     return { todayTotal, yesterdayTotal, best, week, sessions: state.sessions.length };
-  }, [state.sessions, state.count]);
+  }, [state.sessions, state.count, now]);
 
   const R = 118;
   const C = 2 * Math.PI * R;

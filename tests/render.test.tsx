@@ -19,6 +19,9 @@ import Tasbih from "../src/pages/Tasbih";
 import Duas from "../src/pages/Duas";
 import Hadith from "../src/pages/Hadith";
 import CalendarPage from "../src/pages/CalendarPage";
+import Mosques from "../src/pages/Mosques";
+import Tracker from "../src/pages/Tracker";
+import Learn from "../src/pages/Learn";
 
 function render(path: string): string {
   const html = renderToString(
@@ -36,6 +39,9 @@ function render(path: string): string {
             <Route path="duas" element={<Duas />} />
             <Route path="hadith" element={<Hadith />} />
             <Route path="calendar" element={<CalendarPage />} />
+            <Route path="mosques" element={<Mosques />} />
+            <Route path="tracker" element={<Tracker />} />
+            <Route path="learn" element={<Learn />} />
           </Route>
         </Routes>
       </AppStateProvider>
@@ -99,6 +105,25 @@ describe("companion sections", () => {
     const html = render("/calendar");
     expect(html).toContain("Hijri Calendar");
     expect(html).toContain("Umm al-Qura");
+  });
+
+  test("mosque finder renders its search controls", () => {
+    const html = render("/mosques");
+    expect(html).toContain("Mosque finder");
+    expect(html).toContain("Use my location");
+    expect(html).toContain("OpenStreetMap");
+  });
+
+  test("worship tracker renders the daily checklist", () => {
+    const html = render("/tracker");
+    expect(html).toContain("Worship tracker");
+    expect(html).toContain("Amal");
+  });
+
+  test("learning center renders its sections", () => {
+    const html = render("/learn");
+    expect(html).toContain("Learning center");
+    expect(html).toContain("Guides");
   });
 });
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Compass,
   ExternalLink,
@@ -135,6 +135,8 @@ export default function Mosques() {
   const [status, setStatus] = useState<Status>({ phase: "idle" });
   const [mosques, setMosques] = useState<Mosque[]>([]);
   const [center, setCenter] = useState<{ lat: number; lng: number; label: string } | null>(null);
+  /** Monotonic id so a slower, older response can't overwrite a newer search. */
+  const searchSeq = useRef(0);
 
   const deviceTz = useMemo(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -144,10 +146,13 @@ export default function Mosques() {
 
   const search = useCallback(
     async (lat: number, lng: number, label: string) => {
-      setCenter({ lat, lng, label });
-      setStatus({ phase: "loading" });
+      // Nothing is written until the network answers, so calling this from an
+      // effect never triggers a synchronous render — the UI derives its
+      // spinner from `view` below while the auto-search is in flight.
+      const seq = ++searchSeq.current;
       try {
         const elements = await queryOverpass(lat, lng);
+        if (seq !== searchSeq.current) return; // superseded by a newer search
         const found: Mosque[] = [];
         for (const el of elements) {
           const name = el.tags?.name;
@@ -166,9 +171,12 @@ export default function Mosques() {
           });
         }
         found.sort((a, b) => a.distanceM - b.distanceM);
+        setCenter({ lat, lng, label });
         setMosques(found);
         setStatus({ phase: "done" });
       } catch {
+        if (seq !== searchSeq.current) return;
+        setCenter({ lat, lng, label });
         setMosques([]);
         setStatus({
           phase: "error",
@@ -180,6 +188,14 @@ export default function Mosques() {
     [],
   );
 
+  /** Manual searches run from an event handler, so they may set the loading
+   *  state synchronously before kicking off the request. */
+  const startSearch = (lat: number, lng: number, label: string) => {
+    setCenter({ lat, lng, label });
+    setStatus({ phase: "loading" });
+    void search(lat, lng, label);
+  };
+
   const useDevice = () => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setStatus({ phase: "error", message: "Geolocation is not available on this device." });
@@ -187,7 +203,7 @@ export default function Mosques() {
     }
     setStatus({ phase: "locating" });
     navigator.geolocation.getCurrentPosition(
-      (pos) => void search(pos.coords.latitude, pos.coords.longitude, "My location"),
+      (pos) => startSearch(pos.coords.latitude, pos.coords.longitude, "My location"),
       () =>
         setStatus({
           phase: "error",
@@ -197,13 +213,23 @@ export default function Mosques() {
     );
   };
 
-  // Auto-search once when a prayer location is already configured.
+  // Auto-search once per configured prayer location. `resolved` gets a fresh
+  // identity on every render, so the once-guard compares coordinates, not
+  // object references, and the request itself writes nothing until it lands.
+  const autoKey = resolved ? `${resolved.lat},${resolved.lng}` : null;
+  const autoStartedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (resolved && status.phase === "idle") {
+    if (resolved && autoKey !== null && autoStartedRef.current !== autoKey) {
+      autoStartedRef.current = autoKey;
       void search(resolved.lat, resolved.lng, resolved.label);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolved]);
+  }, [autoKey]);
+
+  // While the auto-search is in flight status is still "idle" (nothing is
+  // written until the network answers) — present that state as loading.
+  const view: Status =
+    status.phase === "idle" && resolved ? { phase: "loading" } : status;
 
   const externalQuery = center
     ? `mosque near ${center.lat},${center.lng}`
@@ -226,7 +252,7 @@ export default function Mosques() {
         <Button
           className="cursor-pointer gap-2"
           onClick={useDevice}
-          disabled={status.phase === "locating" || status.phase === "loading"}
+          disabled={view.phase === "locating" || view.phase === "loading"}
         >
           {status.phase === "locating" ? (
             <Loader2 className="size-4 animate-spin" />
@@ -238,8 +264,8 @@ export default function Mosques() {
         <Button
           variant="outline"
           className="cursor-pointer gap-2"
-          disabled={status.phase === "loading"}
-          onClick={() => void search(51.5074, -0.1278, "Demo: London")}
+          disabled={view.phase === "loading"}
+          onClick={() => startSearch(51.5074, -0.1278, "Demo: London")}
           hidden={false}
         >
           <Compass className="size-4" />
@@ -253,7 +279,7 @@ export default function Mosques() {
           <button
             key={c.id}
             type="button"
-            onClick={() => void search(c.lat, c.lng, `${c.name}, ${c.country}`)}
+            onClick={() => startSearch(c.lat, c.lng, `${c.name}, ${c.country}`)}
             className="cursor-pointer rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
           >
             {c.name}
@@ -261,25 +287,25 @@ export default function Mosques() {
         ))}
       </div>
 
-      {status.phase === "loading" && (
+      {view.phase === "loading" && (
         <Card className="border-border/70 shadow-none">
           <CardContent className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" />
-            Searching OpenStreetMap near {center?.label}…
+            Searching OpenStreetMap near {center?.label ?? resolved?.label ?? "your area"}…
           </CardContent>
         </Card>
       )}
 
-      {status.phase === "error" && (
+      {view.phase === "error" && (
         <Card className="border-border/70 shadow-none">
           <CardContent className="flex flex-col gap-3 py-6">
-            <p className="text-sm text-muted-foreground">{status.message}</p>
+            <p className="text-sm text-muted-foreground">{view.message}</p>
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 className="cursor-pointer gap-1.5"
-                onClick={() => center && void search(center.lat, center.lng, center.label)}
+                onClick={() => center && startSearch(center.lat, center.lng, center.label)}
               >
                 <RefreshCw className="size-3.5" />
                 Try again
@@ -295,7 +321,7 @@ export default function Mosques() {
         </Card>
       )}
 
-      {status.phase === "done" && (
+      {view.phase === "done" && (
         <Card className="border-border/70 shadow-none">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">

@@ -1,8 +1,8 @@
 ## Noor Al-Islam — The Complete Qur'an & Muslim Companion
 
 **You read the Qur'an** — all 114 surahs, all 6,236 ayahs, in Uthmani script
-with a verified English translation, recitation audio, bookmarks, search and
-offline reading — and the app covers the rest of a Muslim's day: prayer
+with your choice of 8 verified translations, recitation audio, bookmarks,
+search and offline reading — and the app covers the rest of a Muslim's day: prayer
 times with alarms, Qibla, tasbih, duas, hadith and a Hijri calendar. No
 account is ever required to read.
 
@@ -13,42 +13,94 @@ account is ever required to read.
 - **Home dashboard**: "As-salamu alaikum" greeting, Gregorian + Hijri (Umm
   al-Qura) dates with local time, Continue Reading (persisted last-read
   position), Verse of the Day (real ayah from the source, changes daily),
-  quick links into the Qur'an.
+  quick links into the Qur'an and every companion section.
+- **Interface in 5 languages**: English, العربية (full RTL), Français,
+  Hausa and Yorùbá — chosen in Settings. The UI language is independent of
+  the Qur'an translation: no unverified translation is ever substituted.
 - **Qur'an hub** (`/quran`): all 114 surahs (filterable), all 30 juz,
-  full-text search (English translation + Arabic Uthmani), bookmarks tab.
-- **Reader** (`/quran/:surahId`): Uthmani text + Saheeh International
-  translation, ornamental basmala line, adjustable Arabic font size,
-  ayah jump, bookmark/copy/share per ayah, automatic last-read tracking,
-  reading progress bar, verse-by-verse audio (7 reciters, play/pause/prev/
-  next/continuous/repeat/speed, lock-screen media controls).
+  full-text search (English translation + Arabic Uthmani), bookmarks tab,
+  and a **Plans** tab — Khatmah planner with 7/15/30/90-day targets, juz
+  logging and honest behind/ahead pace commentary.
+- **Reader** (`/quran/:surahId`): Uthmani text + your chosen translation,
+  ornamental basmala line, adjustable Arabic font size, ayah jump,
+  bookmark/copy/share/note per ayah, **personal ayah notes** (device-local),
+  **per-ayah tafsir** (Ibn Kathir Abridged in English, Tafsir al-Muyassar
+  in Arabic — labelled scholarly commentary, fetched on demand),
+  **loop-range playback** for memorisation (from–to ayahs × 3/5/10/∞),
+  automatic last-read tracking, reading progress bar, verse-by-verse audio
+  (7 reciters, play/pause/prev/next/continuous/repeat/speed, lock-screen
+  media controls).
+- **8 verified translation editions**: Saheeh, Pickthall, Yusuf Ali,
+  Hilali & Khan, Français (Hamidullah), Hausa (Gumi), Indonesia (Kemenag)
+  and Türkçe (Diyanet) — every identifier was verified live against the
+  source before being listed. The choice syncs to your account and caches
+  per edition for offline reading.
 - **Prayer times** (`/prayer`): an offline astronomical engine (PrayTimes-
   style solar position math) computes Fajr→Isha for your location with 9
   calculation methods, Madhab/Asr choice and high-latitude fallback;
   countdown to the next prayer, notification permission, and per-prayer
   adhān alarms that chime in-app (reminder host runs app-wide).
-- **Qibla** (`/qibla`): great-circle bearing to the Kaaba from your location,
-  device-orientation compass (with manual fallback), city quick-picks.
-- **Tasbih** (`/tasbih`): counter with haptics, target circles, dhikr presets,
-  persisted session.
+- **Notification center** (`/reminders`): personal reminders with weekday
+  schedules, quiet hours and snooze — same honest in-app engine.
+- **Qibla** (`/qibla`): great-circle bearing and distance to the Kaaba from
+  your prayer location, live device-compass with permission/denied/no-
+  sensor fallbacks, magnetic-interference warning with figure-eight
+  recalibration guidance, city quick-picks.
+- **Tasbih** (`/tasbih`): tap-to-count with haptics and a completion chime
+  (both toggleable), target rings, **custom dhikr phrases and targets**,
+  **undo** (button + Ctrl+Z), reset confirmation, auto-logged **session
+  history** with today/yesterday/lifetime stats and a 7-day chart.
 - **Duas** (`/duas`): curated authentic supplications (morning/evening,
   prayer, travel, food, distress…) with Arabic, transliteration and
-  translation.
+  translation — **searchable**, with **favorites**, per-dua **repeat
+  counters** (1/3/7/33/100) and **share**.
 - **Hadith** (`/hadith`): attributed hadith collection including the Forty of
   an-Nawawi, with narrator grading.
-- **Hijri calendar** (`/calendar`): dual Hijri/Gregorian month grid (Umm al-
-  Qura via Intl), Islamic events (Ramadan, Eids, ʿĀshūrāʾ, Laylat al-Qadr…).
-- **Offline**: every surah read once is cached on-device; an offline banner
-  and graceful error states cover the rest.
-- **Settings**: theme, Arabic size, translation toggle, reciter, source
-  attribution, offline-cache management. All preferences persist locally.
+- **Hijri calendar** (`/calendar`): **month/week/day views** with dual Hijri/
+  Gregorian dates (Umm al-Qura via Intl), **±2-day manual adjustment**
+  applied app-wide, Islamic events (Ramadan, Eids, ʿĀshūrāʾ, Laylat
+  al-Qadr…) **plus your own events with optional reminders**, a
+  **Hijri↔Gregorian converter**, share-a-day and a printable month.
+- **Learning center** (`/learn`): guides (pillars, wuḍūʾ, ṣalāh), a Seerah
+  timeline and a short quiz — educational material, kept separate from
+  Qur'an and hadith, with a "practice questions belong with a qualified
+  scholar" notice.
+- **Ramadan & zakat** (`/ramadhan`): Ramadan tools and a zakāt calculator
+  (pure, unit-tested math).
+- **Worship tracker** (`/tracker`): a gentle daily checklist (prayers, Qur'an,
+  adhkar, fasting, charity, memorization) with streaks and a 7-day view.
+- **Mosque finder** (`/mosques`): real nearby masjids from OpenStreetMap
+  (Overpass mirrors) with distances, addresses and directions — nothing
+  invented, with graceful fallback when the service is unreachable.
+- **Offline & downloads** (`/downloads`): download/remove per-surah text,
+  cache inventory with sizes, storage usage, network + sync status, clear-
+  all with confirmation. Every surah read once is cached on-device; an
+  offline banner and graceful error states cover the rest.
+- **Accounts & sync**: sign in (`/auth`) and bookmarks, last-read position,
+  settings (incl. translation edition) and recent searches merge across
+  devices via Convex — while everything continues to work fully offline
+  without an account.
+- **Settings**: theme, language, Arabic size, translation edition, reciter,
+  source attribution, offline-cache management. All preferences persist
+  locally.
 
 ### Data sources (attribution)
 
 - Qur'an text: Uthmani script via the [AlQuran Cloud API](https://alquran.cloud)
   from [Tanzil.net](https://tanzil.net) (CC BY 3.0 — keep this notice when
   redistributing).
-- English translation: Saheeh International (`en.sahih`).
+- Translations: AlQuran Cloud editions — Saheeh International (default),
+  Pickthall, Yusuf Ali, Hilali & Khan, Hamidullah (French), Gumi (Hausa),
+  Kemenag (Indonesian), Diyanet (Turkish); every translator is attributed
+  in the in-app picker.
+- Tafsir: [Qur'an.com API](https://api.quran.com) — Ibn Kathir (Abridged,
+  English) and Tafsir al-Muyassar (Arabic). Shown as scholarly commentary,
+  not scripture; needs a connection.
 - Verse audio: `cdn.islamic.network` (streamed, not redistributed).
+- Mosques: © [OpenStreetMap](https://www.openstreetmap.org/copyright)
+  contributors (ODbL) via the Overpass API.
+- Prayer times / Qibla: computed on-device (PrayTimes-style solar math and
+  great-circle bearing) — no server involved.
 
 ### Commands
 
@@ -56,32 +108,44 @@ account is ever required to read.
 bun run dev         # start the dev server (the platform runs this for you)
 bun tsc -b --noEmit # typecheck
 bun run lint        # eslint
-bun test            # unit tests (metadata integrity, prayer times, helpers)
+bun test            # unit tests (render smoke, metadata, prayer times, sync rules)
 bun run verify:data # live check of all 114 surahs/6,236 ayahs against the source
 ```
 
 ### Project layout
 
 - `src/lib/surahs.ts` — verified surah + juz metadata (do not hand-edit)
-- `src/lib/quranApi.ts` — data client, offline cache, search, audio URLs
+- `src/lib/quranApi.ts` — data client, offline cache, search, audio, tafsir
+- `src/lib/translation-editions.ts` — live-verified translation editions
 - `src/lib/quranText.ts` — pure display helpers (basmala split, daily ayah)
+- `src/lib/plans.ts` — Khatmah (Qur'an completion) planner math
 - `src/lib/prayerTimes.ts` — offline astronomical prayer time engine
 - `src/lib/prayerSettings.ts` — method/madhab presets, alarms, next-prayer math
 - `src/lib/qibla.ts` — great-circle bearing to the Kaaba
-- `src/lib/hijri.ts` — Hijri parts + Islamic events for the calendar
+- `src/lib/hijri.ts` — Hijri parts, Islamic events, ± adjustment, conversion
+- `src/lib/reminders.ts` + `src/lib/events.ts` — reminder engine, personal events
+- `src/lib/zakat.ts` — zakāt math (pure functions, unit-tested)
+- `src/lib/i18n.tsx` — 5-language interface (incl. full RTL Arabic)
 - `src/lib/app-state.tsx` — settings/bookmarks/last-read (localStorage)
+- `src/lib/sync-state.ts` + `src/lib/app-sync.tsx` — pure merge rules and the
+  Convex-backed account sync engine (`src/convex/sync.ts`)
 - `src/components/AppShell.tsx` — splash, bottom nav, offline banner
-- `src/components/PrayerReminderHost.tsx` — app-wide adhān alarm engine
-- `src/data/` — curated duas + hadith content
+- `src/components/PrayerReminderHost.tsx` / `src/components/ReminderHost.tsx` —
+  adhān and personal-reminder engines (run app-wide)
+- `src/data/` — curated duas, hadith and learning content
 - `src/pages/` — `Home`, `QuranHub`, `Reader`, `Prayer`, `Qibla`, `Tasbih`,
-  `Duas`, `Hadith`, `CalendarPage`
+  `Duas`, `Hadith`, `CalendarPage`, `Reminders`, `Ramadhan`, `Mosques`,
+  `Learn`, `Downloads`, `Tracker`, plus `Auth` and `Dashboard`
 - `scripts/verify-live-data.ts` — religious-data integrity check
 
 ### Scope notes
 
-Accounts/sync (`/auth`, `/dashboard`) come from the template; nothing here
-requires them — reading, prayer times, alarms and all companion tools work
-fully offline without sign-in.
+Nothing here requires an account — reading, prayer times, alarms and all
+companion tools work fully offline without sign-in; signing in (`/auth` →
+`/dashboard`) only mirrors bookmarks, last-read position, settings and
+recent searches across devices. Reminders and adhān alarms are honest
+in-app notifications: they fire while the app is open (Web Notifications
+API, no push service is configured), never silently pretending otherwise.
 
 ---
 

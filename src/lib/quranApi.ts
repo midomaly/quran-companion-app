@@ -20,7 +20,6 @@ import { isValidSurah } from "./surahs";
 import {
   DEFAULT_TRANSLATION_ID,
   isKnownTranslation,
-  translationEditionName,
 } from "./translation-editions";
 
 export {

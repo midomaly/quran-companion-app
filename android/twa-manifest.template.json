@@ -1,0 +1,42 @@
+{
+  "packageId": "com.freebuff.nooralislam",
+  "host": "__OWNER__.github.io",
+  "name": "Noor Al-Islam",
+  "launcherName": "Noor Al-Islam",
+  "display": "standalone",
+  "themeColor": "#0B5540",
+  "themeColorDark": "#0A2F24",
+  "navigationColor": "#0B5540",
+  "navigationColorDark": "#0A2F24",
+  "navigationDividerColor": "#0B5540",
+  "navigationDividerColorDark": "#0A2F24",
+  "backgroundColor": "#0B3D2E",
+  "enableNotifications": true,
+  "startUrl": "/__REPO__/",
+  "iconUrl": "https://__OWNER__.github.io/__REPO__/icons/icon-512.png",
+  "maskableIconUrl": "https://__OWNER__.github.io/__REPO__/icons/icon-512-maskable.png",
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://__OWNER__.github.io/__REPO__/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "fallbackValue": "https://__OWNER__.github.io/__REPO__/",
+  "features": {},
+  "alphaDependencies": { "enabled": false },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSonly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://__OWNER__.github.io/__REPO__/",
+  "enabledDelegations": [],
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  },
+  "fingerprints": [
+    {
+      "name": "release",
+      "sha256CertFingerprint": "__FP__"
+    }
+  ]
+}

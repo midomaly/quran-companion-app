@@ -1,0 +1,164 @@
+# Builds the Android app (Trusted Web Activity via Bubblewrap) and publishes
+# the signed APK as a GitHub Release asset — that release asset is the
+# permanent download link.
+#
+# Flow: deploy the site to GitHub Pages (a permanent HTTPS URL the APK needs)
+# → generate/load a signing key → render android/twa-manifest.template.json
+# → bubblewrap build → attach app-release-signed.apk to a release.
+#
+# One-time setup (repo Settings):
+#   1. Settings → Pages → Source: "GitHub Actions" (deploy-pages requires it).
+#   2. Optional secrets:
+#        ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_PASSWORD  (default: noor-android)
+#        KEYSTORE_BASE64  (base64 of android.keystore — archive it, otherwise
+#                          later builds use a fresh key and will NOT install as
+#                          an update over the old app)
+#
+# Runs on every push to main/master; can also be started by hand:
+#   Actions → "Build Android APK" → Run workflow.
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VITE_CONVEX_URL: https://fortunate-tapir-407.convex.cloud
+
+jobs:
+  deploy-site:
+    name: Deploy site to GitHub Pages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout needs repo read; job permissions zero out the rest
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install and typecheck
+        run: |
+          bun install --frozen-lockfile
+          bunx tsc -b --noEmit
+
+      - name: Unit tests and lint
+        run: |
+          bun test
+          bun run lint
+
+      - name: Build for Pages (sub-path base)
+        run: |
+          REPO="${{ github.event.repository.name }}"
+          bunx vite build --base "/${REPO}/" --outDir dist-pages
+          # SPA fallback for deep links on Pages.
+          cp dist-pages/index.html dist-pages/404.html
+          # The manifest lives under /REPO/, so rewrite its root-relative URLs.
+          jq --arg base "/${REPO}/" \
+            '.id = $base | .start_url = $base | .scope = $base
+             | .icons |= map(.src = $base[0:-1] + .src)' \
+            dist-pages/manifest.webmanifest > dist-pages/manifest.tmp \
+            && mv dist-pages/manifest.tmp dist-pages/manifest.webmanifest
+          jq . dist-pages/manifest.webmanifest > /dev/null
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-pages
+
+      - id: pages
+        uses: actions/deploy-pages@v4
+
+  build-apk:
+    name: Build APK (Bubblewrap TWA)
+    needs: deploy-site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Point Bubblewrap at the runner's JDK + SDK (skips first-run prompts)
+        run: |
+          mkdir -p ~/.bubblewrap
+          JDK="$(dirname "$(dirname "$(readlink -f "$(which java)")")")"
+          printf '{"jdkPath":"%s","androidSdkPath":"%s"}\n' "$JDK" "$ANDROID_HOME" \
+            > ~/.bubblewrap/config.json
+          cat ~/.bubblewrap/config.json
+
+      - name: Signing key (uses KEYSTORE_BASE64 when set, otherwise generates one)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          STOREPASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'noor-android' }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > android.keystore
+          else
+            keytool -genkeypair -keystore android.keystore -alias android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$STOREPASS" -keypass "$STOREPASS" \
+              -dname "CN=Noor Al-Islam, O=Freebuff, C=US"
+            echo "::warning::Generated a fresh signing key. Archive it as the KEYSTORE_BASE64 secret or future APKs will not install over this one."
+          fi
+
+      - name: Render twa-manifest.json (owner, repo, signing fingerprint)
+        env:
+          STOREPASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'noor-android' }}
+        run: |
+          FP="$(keytool -list -keystore android.keystore -storepass "$STOREPASS" -alias android \
+            | sed -n 's/^.*SHA256: *\([0-9A-Fa-f:]*\).*$/\1/p' \
+            | head -1 | tr -d ':' | tr 'a-f' 'A-F')"
+          echo "signing fingerprint: $FP"
+          sed -e "s/__OWNER__/${{ github.repository_owner }}/g" \
+              -e "s/__REPO__/${{ github.event.repository.name }}/g" \
+              -e "s/__FP__/$FP/g" \
+              android/twa-manifest.template.json > twa-manifest.json
+          jq . twa-manifest.json > /dev/null
+
+      - name: Install Bubblewrap and generate the Android project
+        run: |
+          npm i -g @bubblewrap/cli
+          bubblewrap update --skipVersionUpgrade
+
+      - name: Build the signed APK
+        env:
+          BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'noor-android' }}
+          BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || 'noor-android' }}
+        run: bubblewrap build --skipPwaValidation
+
+      - name: Generate the Digital Asset Links file (host it to hide the browser bar)
+        run: |
+          bubblewrap fingerprint generateAssetLinks --output=assetlinks.json || true
+          if [ -f assetlinks.json ]; then cat assetlinks.json; fi
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: noor-islam-apk
+          path: app-release-signed.apk
+
+      - name: Publish APK to a release (the download link)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="apk-${{ github.run_number }}"
+          FILES="app-release-signed.apk"
+          [ -f assetlinks.json ] && FILES="$FILES assetlinks.json"
+          gh release create "$TAG" $FILES \
+            --title "Noor Al-Islam APK (build ${{ github.run_number }})" \
+            --notes "Trusted Web Activity build. Download app-release-signed.apk, open it on Android and allow installs from this source. Install assetlinks.json on the site root (OWNER.github.io repo, /.well-known/) to hide the browser bar." \
+          || gh release upload "$TAG" $FILES --clobber

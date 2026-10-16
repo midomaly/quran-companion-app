@@ -113,6 +113,55 @@ bun run verify:data # live check of all 114 surahs/6,236 ayahs against the sourc
 bun scripts/generate-icons.ts # regenerate the PWA icons from public/logo.svg
 ```
 
+### Android APK (automated CI build)
+
+Pushing to `main`/`master` runs `.github/workflows/android-apk.yml` (it can
+also be started by hand: Actions → **Build Android APK** → Run workflow), which:
+
+1. typechecks, runs `bun test` and lints;
+2. builds the site under the repo sub-path (SPA `404.html` fallback,
+   sub-path-scoped manifest) and deploys it to **GitHub Pages** — the web
+   app's permanent URL: `https://<owner>.github.io/<repo>/`;
+3. builds a signed Android **Trusted Web Activity** APK with
+   [Bubblewrap](https://github.com/GoogleChromeLabs/bubblewrap) against the
+   deployed site and attaches it to a GitHub release.
+
+**APK download link** (always the newest build):
+
+```
+https://github.com/<owner>/<repo>/releases/latest/download/app-release-signed.apk
+```
+
+One-time setup (repository → Settings):
+
+1. **Pages → Source: "GitHub Actions"** — required, or the deploy step fails.
+2. Optional secrets (Settings → Secrets and variables → Actions). The
+   pipeline works with none of them: it generates a throwaway signing key
+   (password `noor-android`) and posts a warning telling you to archive it.
+
+| Secret | Purpose |
+| --- | --- |
+| `KEYSTORE_BASE64` | Your own release key: base64 of `android.keystore`. **Archive it** — without it later builds generate a fresh key and won't install as updates over earlier APKs. |
+| `ANDROID_KEYSTORE_PASSWORD` | Your keystore's password (default `noor-android`; required whenever you supply your own key) |
+| `ANDROID_KEY_PASSWORD` | Password for key alias `android` (default `noor-android`) |
+
+To use your own key, create the keystore once (keep it safe — losing it
+means losing update signing), then store all three secrets:
+
+```bash
+keytool -genkeypair -v \
+  -keystore android.keystore -alias android \
+  -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 android.keystore   # GNU; macOS: base64 -i android.keystore
+```
+
+The committed `android/twa-manifest.template.json` keeps the build fully
+non-interactive (package id `com.freebuff.nooralislam`); CI fills in the
+owner/repo, the signing certificate fingerprint and the keystore at build
+time. If generated, `assetlinks.json` ships with each release — host it at
+`/.well-known/assetlinks.json` on the Pages site to hide the browser bar in
+the installed app.
+
 ### Project layout
 
 - `src/lib/surahs.ts` — verified surah + juz metadata (do not hand-edit)

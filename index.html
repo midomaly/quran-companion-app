@@ -3,7 +3,7 @@
 
 <head>
   <script>
-    /* Silent-crash reporter v4 — this template disables Vite's full-screen error
+    /* Silent-crash reporter v5 — this template disables Vite's full-screen error
        overlay, so any startup failure would render a blank white page with no
        message. CRITICAL: nothing here may wait on DOMContentLoaded — module
        scripts delay DCL, so a hung module fetch means DCL never fires and every
@@ -11,8 +11,12 @@
        with no diagnostics). Everything is scheduled from script execution.
        Behavior: static boot splash (#noor-boot) shows instantly; a live request
        counter ticks while loading is healthy; the full diagnostics panel only
-       appears when loading is stalled, an error was captured, or t >= 45s; and
-       everything is removed the moment React mounts. */
+       appears when loading is stalled, an error was captured, or t >= 45s;       and everything is removed the moment React mounts.
+       v5: on proxied/mobile previews the HMR websocket cannot connect (vite
+       logs it with console.error) and a single chunk can take minutes to
+       download on weak mobile data — both used to flip this panel over a
+       perfectly healthy load. Benign vite/ws chatter is now ignored, and a
+       frozen counter only counts as a stall after a live probe fails. */
     (function () {
       var origError = console.error;
       var errors = []; /* { m: message, c: isFromConsole } */
@@ -20,13 +24,34 @@
       var booted = Date.now();
       var mountedOk = false;
       var lastProbe = "probe: pending (runs every 3s)";
+      var probing = false;
+      var confirmedStalled = false;
       var lastCount = -1;
       var frozenTicks = 0;
       var reportTimer = null;
       var rootTimer = null;
       window.__noorMounted = false;
 
+      function benign(msg) {
+        var s = String(msg);
+        /* Vite's HMR client cannot reach its websocket through the preview
+           proxy (server-side websocket forwarding is not configured). That is
+           noise, not a boot failure — the app loads fine over plain HTTP. */
+        return (
+          s.indexOf("failed to connect to websocket") !== -1 ||
+          s.indexOf("Server connection lost") !== -1
+        );
+      }
+
       function add(msg, isConsole) {
+        if (benign(msg)) {
+          try {
+            origError.call(console, "[Noor Al-Islam] non-fatal:", msg);
+          } catch (e) {
+            /* never let logging throw */
+          }
+          return;
+        }
         if (errors.length < 8) errors.push({ m: msg, c: !!isConsole });
         try {
           origError.call(console, "[Noor Al-Islam] diagnostic:", msg);
@@ -203,9 +228,20 @@
         else frozenTicks = 0;
         lastCount = n;
 
-        var age = Date.now() - booted;
-        var stalled = frozenTicks >= 2; /* ~6s with zero completed requests */
-        var mustShow = errors.length > 0 || stalled || age >= 45000;
+        /* A frozen counter alone is not a wedged connection: one big chunk
+           downloading on weak mobile data freezes it for minutes. Confirm
+           with a live probe before treating it as a stall; the old age >= 45s
+           force is gone — it painted diagnostics over healthy slow loads. */
+        var stalled = confirmedStalled;
+        if (frozenTicks >= 2 && !probing && !confirmedStalled) {
+          probing = true;
+          probe().then(function (p) {
+            lastProbe = p;
+            probing = false;
+            confirmedStalled = /FETCH ERROR|TIMEOUT/.test(p);
+          });
+        }
+        var mustShow = errors.length > 0 || stalled;
         if (!mustShow && !overlay) {
           /* Healthy-but-slow load: keep the branded splash with its live
              counter instead of covering the page with diagnostics. */
@@ -407,6 +443,7 @@
       }
       var lastCount = -1;
       var stallTicks = 0;
+      var probeBusy = false;
       setInterval(function () {
         if (window.__noorMounted) return;
         if (document.querySelector("[data-noor-fail]")) return; /* failure screen shown — don't wipe it */
@@ -422,20 +459,43 @@
         else stallTicks = 0;
         lastCount = n;
         if (stallTicks < 4) return; /* ~20s with zero progress */
-        var now = Date.now();
-        var hist = loadHist().filter(function (t) {
-          return now - t < WINDOW_MS;
-        });
-        if (hist.length >= MAX_PER_WINDOW) return;
-        hist.push(now);
-        try {
-          sessionStorage.setItem(RELOAD_KEY, JSON.stringify(hist));
-        } catch (e) {
-          /* storage unavailable — proceed with reload anyway */
-        }
-        var u = new URL(location.href);
-        u.searchParams.set("_bootretry", String(hist.length));
-        location.replace(u.href);
+        if (probeBusy) return;
+        probeBusy = true;
+        /* Confirm the connection is truly dead before burning a reload — a
+           huge chunk still downloading freezes the counter without the
+           connection being wedged, and restarting would throw away that
+           progress on a slow/metered link. */
+        var ctrl =
+          typeof AbortController !== "undefined" ? new AbortController() : null;
+        var to = setTimeout(function () {
+          if (ctrl) ctrl.abort();
+        }, 2500);
+        fetch("/src/main.tsx", {
+          cache: "no-store",
+          signal: ctrl ? ctrl.signal : undefined,
+        })
+          .catch(function () {
+            return null;
+          })
+          .then(function (r) {
+            clearTimeout(to);
+            probeBusy = false;
+            if (r) return; /* the network answered — keep waiting */
+            var now = Date.now();
+            var hist = loadHist().filter(function (t) {
+              return now - t < WINDOW_MS;
+            });
+            if (hist.length >= MAX_PER_WINDOW) return;
+            hist.push(now);
+            try {
+              sessionStorage.setItem(RELOAD_KEY, JSON.stringify(hist));
+            } catch (e) {
+              /* storage unavailable — proceed with reload anyway */
+            }
+            var u = new URL(location.href);
+            u.searchParams.set("_bootretry", String(hist.length));
+            location.replace(u.href);
+          });
       }, 5000);
     } catch (e) {
       /* storage unavailable — reporter still covers failures */

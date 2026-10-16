@@ -4,11 +4,24 @@
  * (bad hooks, broken JSX, missing providers) without needing a browser.
  * Run with: bun test
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { renderToString } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { AppStateProvider } from "../src/lib/app-state";
 import { I18nProvider } from "../src/lib/i18n";
+// The harness mounts pages without the Convex client/auth tree (no deployment
+// URL inside tests), so stub the auth hook that sync-aware pages call at the
+// top level. Signed-out values only; the app itself provides the real tree.
+mock.module("@/hooks/use-auth", () => ({
+  useAuth: () => ({
+    isLoading: false,
+    isAuthenticated: false,
+    user: null,
+    signIn: async () => {},
+    signOut: async () => {},
+  }),
+}));
+
 import AppShell from "../src/components/AppShell";
 import Home from "../src/pages/Home";
 import QuranHub from "../src/pages/QuranHub";
@@ -22,6 +35,9 @@ import CalendarPage from "../src/pages/CalendarPage";
 import Mosques from "../src/pages/Mosques";
 import Tracker from "../src/pages/Tracker";
 import Learn from "../src/pages/Learn";
+import Reminders from "../src/pages/Reminders";
+import Ramadhan from "../src/pages/Ramadhan";
+import Downloads from "../src/pages/Downloads";
 
 function render(path: string): string {
   const html = renderToString(
@@ -42,6 +58,9 @@ function render(path: string): string {
             <Route path="mosques" element={<Mosques />} />
             <Route path="tracker" element={<Tracker />} />
             <Route path="learn" element={<Learn />} />
+            <Route path="reminders" element={<Reminders />} />
+            <Route path="ramadhan" element={<Ramadhan />} />
+            <Route path="downloads" element={<Downloads />} />
           </Route>
         </Routes>
       </AppStateProvider>
@@ -124,6 +143,22 @@ describe("companion sections", () => {
     const html = render("/learn");
     expect(html).toContain("Learning center");
     expect(html).toContain("Guides");
+  });
+
+  test("notification center renders the reminders list", () => {
+    const html = render("/reminders");
+    expect(html).toContain("Reminders");
+    expect(html).toContain("quiet");
+  });
+
+  test("ramadan page renders its zakat tools", () => {
+    const html = render("/ramadhan");
+    expect(html).toContain("Ramadan &amp; Zakat");
+  });
+
+  test("downloads page renders the offline centre", () => {
+    const html = render("/downloads");
+    expect(html).toContain("Offline &amp; downloads");
   });
 });
 

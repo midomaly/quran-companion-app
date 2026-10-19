@@ -1,14 +1,17 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { recitersByCountry } from "@/lib/reciters";
 import {
   Check,
   Cloud,
   CloudOff,
   Loader2,
+  Search,
   Settings2,
   Trash2,
   UserRound,
   WifiOff,
 } from "lucide-react";
+import { Link } from "react-router";
 import { useConvex } from "convex/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -164,6 +167,26 @@ export function SettingsButton({ className }: { className?: string }) {
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [cachedSurahs, setCachedSurahs] = useState(() => offlineSurahCount());
+  const [reciterQuery, setReciterQuery] = useState("");
+
+  // Reciter picker: filter across English name, Arabic name and country.
+  const reciterGroups = useMemo(() => {
+    const raw = reciterQuery.trim();
+    if (!raw) return recitersByCountry();
+    const lower = raw.toLowerCase();
+    return recitersByCountry()
+      .map((g) => ({
+        country: g.country,
+        reciters: g.reciters.filter(
+          (r) =>
+            r.name.toLowerCase().includes(lower) ||
+            (r.arabicName ?? "").includes(raw) ||
+            r.country.toLowerCase().includes(lower) ||
+            (r.style ?? "").toLowerCase().includes(lower),
+        ),
+      }))
+      .filter((g) => g.reciters.length > 0);
+  }, [reciterQuery]);
 
   const handleClearCache = () => {
     setClearing(true);
@@ -356,28 +379,75 @@ export function SettingsButton({ className }: { className?: string }) {
             {/* Reciter */}
             <section className="flex flex-col gap-3">
               <SectionTitle>Reciter</SectionTitle>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {RECITERS.map((reciter) => {
-                  const active = settings.reciter === reciter.id;
-                  return (
-                    <button
-                      key={reciter.id}
-                      type="button"
-                      onClick={() => updateSettings({ reciter: reciter.id })}
-                      className={cn(
-                        "flex items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-left text-sm transition-colors",
-                        active
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
-                      )}
-                      aria-pressed={active}
-                    >
-                      <span className="truncate">{reciter.name}</span>
-                      {active && <Check className="size-4 shrink-0" />}
-                    </button>
-                  );
-                })}
+              <p className="-mt-1.5 text-xs text-muted-foreground">
+                {RECITERS.length} reciters — hear each one in the{" "}
+                <Link
+                  to="/reciters"
+                  className="font-medium text-primary underline-offset-2 hover:underline"
+                >
+                  Reciters Library
+                </Link>
+              </p>
+              <div className="relative">
+                <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="search"
+                  value={reciterQuery}
+                  onChange={(e) => setReciterQuery(e.target.value)}
+                  placeholder="Search by name, country or عربي…"
+                  aria-label="Search reciters"
+                  className="h-10 w-full rounded-xl border border-input bg-card pr-4 pl-9 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring/40"
+                />
               </div>
+              {reciterGroups.length === 0 ? (
+                <p className="rounded-xl border border-border bg-card px-3.5 py-4 text-center text-sm text-muted-foreground">
+                  No reciter matches “{reciterQuery.trim()}”.
+                </p>
+              ) : (
+                reciterGroups.map((group) => (
+                  <div key={group.country} className="flex flex-col gap-1.5">
+                    <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                      {group.country}
+                    </p>
+                    {group.reciters.map((reciter) => {
+                      const active = settings.reciter === reciter.id;
+                      const sub = [
+                        reciter.arabicName,
+                        reciter.style,
+                        reciter.perSurah ? "Full surah" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
+                      return (
+                        <button
+                          key={reciter.id}
+                          type="button"
+                          onClick={() => updateSettings({ reciter: reciter.id })}
+                          className={cn(
+                            "flex items-center justify-between gap-2 rounded-xl border px-3.5 py-2.5 text-left transition-colors",
+                            active
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                          )}
+                          aria-pressed={active}
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium">
+                              {reciter.name}
+                            </span>
+                            {sub && (
+                              <span className="block truncate text-[11px] opacity-70">
+                                {sub}
+                              </span>
+                            )}
+                          </span>
+                          {active && <Check className="size-4 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))
+              )}
             </section>
 
             {/* Data */}

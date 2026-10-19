@@ -10,7 +10,7 @@
  * Attribution (shown in the app's About screen):
  *  - Qur'an text: Tanzil.net, Uthmani script (CC BY 3.0) — https://tanzil.net
  *  - Translation: Saheeh International
- *  - Verse audio: cdn.islamic.network
+ *  - Verse audio: everyayah.com, cdn.islamic.network and cdn.mp3quran.net
  *
  * This module NEVER generates or alters scripture: it only fetches, caches and
  * hands back what the sources returned (plus stripping a stray BOM character).
@@ -31,7 +31,6 @@ export {
 } from "./translation-editions";
 
 const API_BASE = "https://api.alquran.cloud/v1";
-const AUDIO_BASE = "https://cdn.islamic.network/quran/audio";
 const REQUEST_TIMEOUT_MS = 15000;
 
 const CACHE_AR_PREFIX = "noor:ar:";
@@ -68,44 +67,15 @@ export function errorMessage(err: unknown): string {
   return "Something went wrong while loading the Qur'an.";
 }
 
-export interface Reciter {
-  id: string;
-  name: string;
-  /** Bitrate this reciter's files exist at on the CDN (verified — NOT uniform). */
-  bitrate: number;
-}
-
-/**
- * Verified verse-by-verse reciters. Each reciter's bitrate and name were
- * verified against the source's own per-ayah response
- * (https://api.alquran.cloud/v1/ayah/{g}/{id} → audio URL) and by HEAD
- * requests across early/middle/final ayahs. Do not assume 128 kbps works
- * for every reciter — it does not.
- */
-export const RECITERS: Reciter[] = [
-  { id: "ar.alafasy", name: "Alafasy", bitrate: 128 },
-  { id: "ar.husary", name: "Husary", bitrate: 128 },
-  { id: "ar.husarymujawwad", name: "Husary (Mujawwad)", bitrate: 128 },
-  { id: "ar.abdurrahmaansudais", name: "Abdurrahmaan As-Sudais", bitrate: 192 },
-  { id: "ar.mahermuaiqly", name: "Maher Al Muaiqly", bitrate: 128 },
-  { id: "ar.saoodshuraym", name: "Saood bin Ibraaheem Ash-Shuraym", bitrate: 64 },
-  { id: "ar.abdullahbasfar", name: "Abdullah Basfar", bitrate: 192 },
-];
-
-export function reciterName(id: string): string {
-  return RECITERS.find((r) => r.id === id)?.name ?? id;
-}
-
-export function isKnownReciter(id: string): boolean {
-  return RECITERS.some((r) => r.id === id);
-}
-
-/** Direct streaming URL for one ayah (global ayah number numbering, 1..6236). */
-export function ayahAudioUrl(globalAyah: number, reciterId: string): string {
-  const reciter = RECITERS.find((r) => r.id === reciterId);
-  const bitrate = reciter?.bitrate ?? 128;
-  return `${AUDIO_BASE}/${bitrate}/${reciterId}/${globalAyah}.mp3`;
-}
+/* The Reciters Library (60 reciters across three public audio CDNs) lives in
+   ./reciters.ts. Re-exported here so existing imports keep working. */
+export {
+  RECITERS,
+  reciterName,
+  isKnownReciter,
+  ayahAudioUrl,
+  type Reciter,
+} from "./reciters";
 
 /* ------------------------------------------------------------------ */
 /* Storage helpers                                                     */

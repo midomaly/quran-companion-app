@@ -46,6 +46,7 @@ import {
   type AyahText,
 } from "@/lib/quranApi";
 import { splitBasmala, toArabicDigits } from "@/lib/quranText";
+import { isPerSurahReciter, surahAudioUrl } from "@/lib/reciters";
 import { SURAHS, getSurah, isValidSurah, type Surah } from "@/lib/surahs";
 import { cn } from "@/lib/utils";
 
@@ -255,7 +256,16 @@ export default function Reader() {
       if (!audio || !arabic || !surah) return;
       const target = arabic.find((a) => a.n === n);
       if (!target) return;
-      audio.src = ayahAudioUrl(target.g, settings.reciter);
+      // Some reciters (mp3quran.net) only publish whole-surah files — those
+      // play the entire surah starting here instead of one ayah.
+      const url = isPerSurahReciter(settings.reciter)
+        ? surahAudioUrl(surahNumber, settings.reciter)
+        : ayahAudioUrl(
+            { surah: surahNumber, ayah: target.n, global: target.g },
+            settings.reciter,
+          );
+      if (!url) return;
+      audio.src = url;
       audio.playbackRate = SPEEDS[speedIndex];
       audio
         .play()
@@ -273,7 +283,7 @@ export default function Reader() {
           );
         });
     },
-    [arabic, surah, settings.reciter, speedIndex],
+    [arabic, surah, surahNumber, settings.reciter, speedIndex],
   );
 
   const togglePlay = useCallback(
@@ -301,6 +311,13 @@ export default function Reader() {
   const handleEnded = useCallback(() => {
     if (!arabic || playing === null) {
       setIsPlaying(false);
+      return;
+    }
+    // Whole-surah recitations end with the surah — ayah-by-ayah advancing,
+    // range loops and repeats only make sense for per-ayah sources.
+    if (isPerSurahReciter(settings.reciter)) {
+      setIsPlaying(false);
+      resetProgressBar();
       return;
     }
     if (repeat) {
@@ -334,7 +351,7 @@ export default function Reader() {
       setIsPlaying(false);
       resetProgressBar();
     }
-  }, [arabic, playing, repeat, loop, settings.continuousPlayback, playAyah]);
+  }, [arabic, playing, repeat, loop, settings.continuousPlayback, settings.reciter, playAyah]);
 
   const handleAudioError = useCallback(() => {
     if (!audioRef.current?.src) return;
@@ -352,6 +369,9 @@ export default function Reader() {
     setLoop(null);
     resetProgressBar();
   };
+
+  /** True when the active reciter only publishes whole-surah audio. */
+  const perSurahReciter = isPerSurahReciter(settings.reciter);
 
   /* ---------------------------------------------------------------- */
   /* Tafsir (commentary, on demand)                                    */
@@ -866,7 +886,7 @@ export default function Reader() {
                 <button
                   type="button"
                   onClick={() => stepAyah(-1)}
-                  disabled={playing <= 1}
+                  disabled={playing <= 1 || perSurahReciter}
                   aria-label="Previous ayah"
                   className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
                 >
@@ -883,7 +903,7 @@ export default function Reader() {
                 <button
                   type="button"
                   onClick={() => stepAyah(1)}
-                  disabled={playing >= (arabic?.length ?? 0)}
+                  disabled={playing >= (arabic?.length ?? 0) || perSurahReciter}
                   aria-label="Next ayah"
                   className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-30"
                 >
@@ -895,16 +915,22 @@ export default function Reader() {
                   </p>
                   <p className="truncate text-[10px] text-muted-foreground">
                     {reciterName(settings.reciter)}
-                    {loop
-                      ? ` · loop ${loop.from}–${loop.to} ${loop.remaining === Infinity ? "∞" : `(${loop.remaining} left)`}`
-                      : !settings.continuousPlayback && !repeat
-                        ? " · single ayah"
-                        : ""}
+                    {perSurahReciter
+                      ? " · full surah"
+                      : loop
+                        ? ` · loop ${loop.from}–${loop.to} ${loop.remaining === Infinity ? "∞" : `(${loop.remaining} left)`}`
+                        : !settings.continuousPlayback && !repeat
+                          ? " · single ayah"
+                          : ""}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
+                    if (perSurahReciter) {
+                      toast.info("Range looping needs a verse-by-verse reciter.");
+                      return;
+                    }
                     if (loop) {
                       setLoop(null);
                       return;
@@ -926,7 +952,13 @@ export default function Reader() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setRepeat((r) => !r)}
+                  onClick={() => {
+                    if (perSurahReciter) {
+                      toast.info("Ayah repeat needs a verse-by-verse reciter.");
+                      return;
+                    }
+                    setRepeat((r) => !r);
+                  }}
                   aria-label={repeat ? "Repeat ayah: on" : "Repeat ayah: off"}
                   aria-pressed={repeat}
                   className={cn(

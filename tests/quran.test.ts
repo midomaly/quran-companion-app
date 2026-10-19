@@ -222,21 +222,30 @@ describe("search edition detection", () => {
 });
 
 describe("audio helpers", () => {
-  test("builds CDN URLs with global ayah numbering", () => {
-    expect(ayahAudioUrl(262, "ar.alafasy")).toBe(
+  test("builds islamic.network CDN URLs with global ayah numbering", () => {
+    expect(ayahAudioUrl({ surah: 2, ayah: 255, global: 262 }, "ar.alafasy")).toBe(
       "https://cdn.islamic.network/quran/audio/128/ar.alafasy/262.mp3",
     );
   });
 
   test("uses each reciter's verified bitrate (CDN files are not uniform)", () => {
-    expect(ayahAudioUrl(262, "ar.saoodshuraym")).toBe(
+    expect(ayahAudioUrl({ surah: 2, ayah: 255, global: 262 }, "ar.saoodshuraym")).toBe(
       "https://cdn.islamic.network/quran/audio/64/ar.saoodshuraym/262.mp3",
     );
-    expect(ayahAudioUrl(1, "ar.abdurrahmaansudais")).toBe(
+    expect(ayahAudioUrl({ surah: 1, ayah: 1, global: 1 }, "ar.abdurrahmaansudais")).toBe(
       "https://cdn.islamic.network/quran/audio/192/ar.abdurrahmaansudais/1.mp3",
     );
-    expect(ayahAudioUrl(6236, "ar.abdullahbasfar")).toBe(
+    expect(ayahAudioUrl({ surah: 114, ayah: 6, global: 6236 }, "ar.abdullahbasfar")).toBe(
       "https://cdn.islamic.network/quran/audio/192/ar.abdullahbasfar/6236.mp3",
+    );
+  });
+
+  test("builds everyayah.com URLs with surah+ayah numbering (not global)", () => {
+    expect(ayahAudioUrl({ surah: 2, ayah: 255, global: 262 }, "Ali_Jaber_64kbps")).toBe(
+      "https://everyayah.com/data/Ali_Jaber_64kbps/002255.mp3",
+    );
+    expect(ayahAudioUrl({ surah: 114, ayah: 6, global: 6236 }, "Ali_Jaber_64kbps")).toBe(
+      "https://everyayah.com/data/Ali_Jaber_64kbps/114006.mp3",
     );
   });
 
@@ -247,7 +256,6 @@ describe("audio helpers", () => {
     for (const r of RECITERS) {
       expect(r.name.length).toBeGreaterThan(0);
       expect(reciterName(r.id)).toBe(r.name);
-      expect([32, 40, 48, 64, 128, 192]).toContain(r.bitrate);
     }
     expect(reciterName("unknown-id")).toBe("unknown-id");
   });

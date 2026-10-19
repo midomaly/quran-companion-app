@@ -15,8 +15,14 @@
        v5: on proxied/mobile previews the HMR websocket cannot connect (vite
        logs it with console.error) and a single chunk can take minutes to
        download on weak mobile data — both used to flip this panel over a
-       perfectly healthy load. Benign vite/ws chatter is now ignored, and a
-       frozen counter only counts as a stall after a live probe fails. */
+       perfectly healthy load.       Benign vite/ws chatter is now ignored, and a
+       frozen counter only counts as a stall after a live probe fails.
+       v6 (white-board fix): the v5 probe budget (2.5s) was SMALLER than this
+       preview proxy's normal latency (first /src/main.tsx takes 5-8s), so the
+       probe always "timed out", every load was flagged stalled, and the panel
+       painted full-screen white — the exact white board users reported. Now:
+       the probe waits 15s (only a truly dead server fails that), and the panel
+       is a dark brand-colored strip at the bottom that never covers the splash. */
     (function () {
       var origError = console.error;
       var errors = []; /* { m: message, c: isFromConsole } */
@@ -108,19 +114,21 @@
         }
       }
 
-      function paint(lines, cover) {
+      function paint(lines) {
         if (overlay) {
           overlay.textContent = lines.join("\n");
           return;
         }
         overlay = document.createElement("div");
+        /* Dark brand strip at the bottom — the splash stays visible above it.
+           (v5 used a full-screen white sheet here; that IS the "white board"
+           users saw, and it hid the branded splash on every slow load.) */
         overlay.style.cssText =
-          "position:fixed;left:0;right:0;" +
-          (cover ? "top:0;bottom:0;" : "top:auto;") +
-          "z-index:2147483647;background:#fff;color:#111;" +
-          "font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;padding:16px;" +
+          "position:fixed;left:0;right:0;bottom:0;" +
+          "z-index:2147483647;background:#0b3d2e;color:#f7e8c4;" +
+          "font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;padding:12px 14px;" +
           "overflow:auto;white-space:pre-wrap;direction:ltr;text-align:left;" +
-          (cover ? "" : "max-height:50vh;border-bottom:2px solid #111;");
+          "max-height:55vh;border-top:2px solid #d6b25c;";
         overlay.textContent = lines.join("\n");
         (document.body || document.documentElement).appendChild(overlay);
       }
@@ -207,7 +215,9 @@
           new Promise(function (res) {
             setTimeout(function () {
               res("probe /src/main.tsx -> TIMEOUT after " + (Date.now() - t0) + "ms (hanging response)");
-            }, 2500);
+            },
+            /* Must EXCEED this proxy's healthy latency (5-8s observed; the               first main.tsx fetch alone takes ~7s) or every slow load is               misreported as a dead connection. 15s only fails when the               dev server is genuinely wedged. */
+            15000);
           }),
         ]);
       }
@@ -256,10 +266,10 @@
           lines.push(
             "NOTE: no JS error, #root is empty. If the DONE counts above keep growing, " +
               "the app is still loading — leave this open. If they are frozen, that fetch " +
-              "is hanging; the page auto-reloads after ~20s of zero progress."
+              "is hanging; the page auto-reloads after ~35s of zero progress."
           );
         }
-        paint(lines, true);
+        paint(lines);
         probe().then(function (p) {
           lastProbe = p;
         });
@@ -314,11 +324,18 @@
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0b5540" />
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a2f24" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap"
-    rel="stylesheet" />
-  <title>Noor Al-Islam — Qur'an & Muslim Companion</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />    <!-- Fonts load WITHOUT blocking render/execution. A pending
+       <link rel="stylesheet"> blocks every module script from EXECUTING even
+       after it has fully downloaded (the CSSOM gate) — on slow mobile links       fonts.googleapis.com stalls for tens of seconds and the app sits white       with main.tsx "DONE" but never run, which is exactly the boot graph the       diagnostics used to show (main.tsx DONE, deps/* never requested).       media="print" fetches it at lowest priority; onload flips it to all       media so the brand fonts still swap in (display=swap is requested). -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap"
+      rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Amiri+Quran&family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap"
+        rel="stylesheet" />
+    </noscript>
+    <title>Noor Al-Islam — Qur'an & Muslim Companion</title>
   <style>
     #noor-boot {
       position: fixed;
@@ -423,9 +440,10 @@
     });
 
     /* Stall watchdog. Reload with a cache-busting param only when there has been
-       ZERO completed network request for ~20s while #root is still empty (a
-       wedged first-load connection pool) — a boot that is slow but progressing
-       is left alone. Budget: at most 2 reloads per 5-minute window, and the
+       ZERO completed network request for ~20s AND a live probe then fails for
+       another 15s (~35s total) while #root is still empty (a wedged first-load
+       connection pool) — a boot that is slow but progressing is left alone.
+       Budget: at most 2 reloads per 5-minute window, and the
        window slides, so the watchdog self-heals instead of going permanently
        blind the way the old lifetime counter did (it hit its cap during earlier
        debugging sessions and never re-armed). */
@@ -469,7 +487,9 @@
           typeof AbortController !== "undefined" ? new AbortController() : null;
         var to = setTimeout(function () {
           if (ctrl) ctrl.abort();
-        }, 2500);
+        },
+        /* 15s, not 2.5s: this preview proxy routinely takes 5-8s to answer,           so the old 2.5s budget made EVERY slow load look dead and reload           forever, restarting the download from zero each time. */
+        15000);
         fetch("/src/main.tsx", {
           cache: "no-store",
           signal: ctrl ? ctrl.signal : undefined,

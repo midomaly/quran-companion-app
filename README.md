@@ -136,10 +136,11 @@ https://<owner>.github.io/<repo>/            <- the deployed web app
 https://github.com/<owner>/<repo>/releases/latest/download/app-release-signed.apk   <- the APK
 ```
 
-Concrete example for user `YOUR-USERNAME`, repo `noor-al-islam`:
+Concrete example for GitHub user `midomaly`, repo `quran-companion-app`:
 
 ```
-https://github.com/YOUR-USERNAME/noor-al-islam/releases/latest/download/app-release-signed.apk
+https://midomaly.github.io/quran-companion-app/            <- the deployed web app
+https://github.com/midomaly/quran-companion-app/releases/latest/download/app-release-signed.apk   <- the APK
 ```
 
 (Easier to browse: `https://github.com/<owner>/<repo>/releases/latest` lists

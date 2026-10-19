@@ -35,6 +35,8 @@ export interface Reciter {
   source: ReciterSource;
   /** islamic: bitrate · everyayah: data folder · mp3quran: moshaf server URL (ends with /). */
   path: string;
+  /** Bitrate the CDN actually serves for this reciter (islamic.network only — NOT uniform). */
+  bitrate?: number;
   /** Recitation style when it differs from plain Murattal. */
   style?: string;
   /** True when the source only has whole-surah files (no per-ayah stepping). */

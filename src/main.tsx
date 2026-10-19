@@ -26,6 +26,7 @@ const Duas = lazy(() => import("./pages/Duas.tsx"));
 const Hadith = lazy(() => import("./pages/Hadith.tsx"));
 const CalendarPage = lazy(() => import("./pages/CalendarPage.tsx"));
 const Reminders = lazy(() => import("./pages/Reminders.tsx"));
+const Reciters = lazy(() => import("./pages/Reciters.tsx"));
 const Ramadhan = lazy(() => import("./pages/Ramadhan.tsx"));
 const Mosques = lazy(() => import("./pages/Mosques.tsx"));
 const Learn = lazy(() => import("./pages/Learn.tsx"));
@@ -165,6 +166,7 @@ createRoot(document.getElementById("root")!).render(
                   <Route path="/qibla" element={<Qibla />} />
                   <Route path="/tasbih" element={<Tasbih />} />
                   <Route path="/duas" element={<Duas />} />
+                  <Route path="/reciters" element={<Reciters />} />
                   <Route path="/hadith" element={<Hadith />} />
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/reminders" element={<Reminders />} />

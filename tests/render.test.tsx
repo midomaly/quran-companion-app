@@ -38,6 +38,7 @@ import Learn from "../src/pages/Learn";
 import Reminders from "../src/pages/Reminders";
 import Ramadhan from "../src/pages/Ramadhan";
 import Downloads from "../src/pages/Downloads";
+import Reciters from "../src/pages/Reciters";
 
 function render(path: string): string {
   const html = renderToString(
@@ -61,6 +62,7 @@ function render(path: string): string {
             <Route path="reminders" element={<Reminders />} />
             <Route path="ramadhan" element={<Ramadhan />} />
             <Route path="downloads" element={<Downloads />} />
+            <Route path="reciters" element={<Reciters />} />
           </Route>
         </Routes>
       </AppStateProvider>
@@ -113,6 +115,39 @@ describe("companion sections", () => {
   test("duas page renders the library", () => {
     const html = render("/duas");
     expect(html).toContain("Duas");
+  });
+
+  test("reciters page renders the library and all 60 reciters", () => {
+    const html = render("/reciters");
+    expect(html).toContain("Reciters Library");
+    expect(html).toContain("مكتبة القرّاء");
+    // Every reciter from the brief is present.
+    for (const name of [
+      "Abdul Rahman Al-Sudais",
+      "Saud Al-Shuraim",
+      "Maher Al-Muaiqly",
+      "Yasser Al-Dosari",
+      "Abdullah Awad Al-Juhany",
+      "Ali Al-Hudhaify",
+      "Abu Bakr Al-Shatri",
+      "Hani Ar-Rifai",
+      "Nasser Al-Qatami",
+      "Idris Abkar",
+      "Khalid Al-Jalil",
+      "Muhammad Ayyoub",
+      "Ali Jaber",
+      "Abdul Mohsen Al-Qasim",
+      "Bandar Baleela",
+      "Abdul Basit Abdus Samad",
+      "Muhammad Siddiq Al-Minshawi",
+      "Mahmoud Khalil Al-Husary",
+    ]) {
+      expect(html).toContain(name);
+    }
+    // 60 preview buttons; 59 "Use in Reader" because the default reciter
+    // (Alafasy) is already active and shows "In the Reader" instead.
+    expect(html.match(/preview/g)?.length).toBe(60);
+    expect(html.match(/Use in Reader/g)?.length).toBe(59);
   });
 
   test("hadith page renders the library", () => {

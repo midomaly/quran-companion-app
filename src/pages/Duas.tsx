@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DUA_CATEGORIES, type Dua } from "@/data/duas";
 import { Check, Copy, Heart, Minus, Plus, Search, Share2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 import { cn } from "@/lib/utils";
 
 const FAVORITES_KEY = "noor:duaFavorites";
@@ -296,7 +297,7 @@ export default function Duas() {
 
       <div className="pb-4 text-center">
         <Button asChild variant="outline" size="sm">
-          <a href="/hadith">Read related hadith →</a>
+          <Link to="/hadith">Read related hadith →</Link>
         </Button>
       </div>
     </div>

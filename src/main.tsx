@@ -102,6 +102,11 @@ class RootErrorBoundary extends React.Component<
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
+// GitHub Pages serves the app from /REPO/ (the workflow builds with
+// `vite build --base /REPO/`), while dev/preview and root deploys serve it
+// from "/". Strip the trailing slash so react-router joins the basename
+// cleanly; without this every route would 404 on the Pages sub-path.
+
 // PWA: register the offline-shell service worker in production only (the dev
 // preview relies on HMR, which a service worker would fight) and only in the
 // top window (the platform preview embeds the app in an iframe, where service
@@ -112,7 +117,7 @@ if (
   window.top === window.self
 ) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {
       /* installability is best-effort — the app works without it */
     });
   });
@@ -153,7 +158,9 @@ createRoot(document.getElementById("root")!).render(
       <ConvexAuthProvider client={convex}>
         <I18nProvider>
         <AppStateProvider>
-          <BrowserRouter>
+          <BrowserRouter
+            basename={import.meta.env.BASE_URL.replace(/\/+$/, "")}
+          >
             <RouteSyncer />
             <Suspense fallback={<RouteLoading />}>
               <Routes>

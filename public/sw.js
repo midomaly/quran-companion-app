@@ -11,7 +11,11 @@
  */
 
 const CACHE = "noor-shell-v1";
-const SHELL = "/";
+// The app root depends on where it is deployed ("/" in dev/root,
+// "/REPO/" on GitHub Pages). The service worker is registered from inside
+// the app's base path, so its scope *is* the app root — cache that instead
+// of the domain root, which on Pages is a different site entirely.
+const SHELL = self.registration.scope;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -58,7 +62,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Static assets (hashed in production): stale-while-revalidate.
-  if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/icons/")) {
+  if (url.pathname.includes("/assets/") || url.pathname.includes("/icons/")) {
     event.respondWith(
       caches.match(req).then((cached) => {
         const fresh = fetch(req)

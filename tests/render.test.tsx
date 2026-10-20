@@ -242,3 +242,31 @@ describe("reader", () => {
     expect(html).toContain("not a valid surah");
   });
 });
+
+describe("github pages sub-path base", () => {
+  test("deep links resolve under the /quran-companion-app/ basename", () => {
+    // GitHub Pages serves the site from /REPO/, so the real router runs with
+    // a basename (see BrowserRouter in src/main.tsx). Without it the location
+    // "/quran-companion-app/quran" matches no route and the app renders the
+    // SPA 404 fallback — the bug this test guards against.
+    const html = renderToString(
+      <MemoryRouter
+        basename="/quran-companion-app"
+        initialEntries={["/quran-companion-app/quran"]}
+      >
+        <I18nProvider>
+        <AppStateProvider>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route index element={<Home />} />
+              <Route path="quran" element={<QuranHub />} />
+            </Route>
+          </Routes>
+        </AppStateProvider>
+        </I18nProvider>
+      </MemoryRouter>,
+    ).replace(/<!-- -->/g, "");
+    expect(html).toContain("The Qur");
+    expect(html).toContain("Al-Faatiha");
+  });
+});

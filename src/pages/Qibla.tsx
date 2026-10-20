@@ -4,6 +4,7 @@ import { resolvePrayerLocation, usePrayerSettings } from "@/lib/prayerSettings";
 import { angleDelta, distanceKm, qiblaBearing } from "@/lib/qibla";
 import { Compass, Loader2, MapPin, Navigation } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 
 type OrientationState = "idle" | "loading" | "granted" | "denied" | "unsupported";
 
@@ -106,7 +107,7 @@ export default function Qibla() {
           <CardContent>
             <div className="grid grid-cols-2 gap-2">
               <Button asChild variant="outline">
-                <a href="/prayer">Open Prayer</a>
+                <Link to="/prayer">Open Prayer</Link>
               </Button>
               <Button
                 variant="outline"

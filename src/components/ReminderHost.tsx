@@ -15,7 +15,7 @@ import {
   loadReminderStore,
   reminderDue,
 } from "@/lib/reminders";
-import { playReminderSound } from "@/lib/prayerSettings";
+import { loadPrayerSettings, playReminderSound } from "@/lib/prayerSettings";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
@@ -56,7 +56,7 @@ export function ReminderHost() {
         } catch {
           /* vibration unsupported */
         }
-        playReminderSound("chime");
+        playReminderSound(loadPrayerSettings().reminders.sound);
         toast(reminder.label);
       }
     };

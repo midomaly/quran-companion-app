@@ -4,7 +4,7 @@
  * On a 20s tick (plus every time the tab becomes visible again) it checks
  * today's prayer times against the reminder settings and fires each enabled
  * alarm exactly once per day: an in-app toast (always), a system notification
- * (when permission is granted) and a gentle chime. A 3-minute grace window
+ * (when permission is granted) and the selected alarm tone. A 3-minute grace
  * catches times that passed while the tab was asleep.
  */
 

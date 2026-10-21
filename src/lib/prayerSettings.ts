@@ -7,7 +7,7 @@
  * - City presets (lat/lng + IANA time zone — DST handled by Intl).
  * - Persistent settings (location, method, Asr madhhab, reminders).
  * - Next-prayer math in absolute instants (works for cities in other zones).
- * - A gentle WebAudio chime used by the alarm.
+ * - The two WebAudio alarm tones (synthesized — no audio assets or network).
  */
 
 import { useCallback, useState } from "react";
@@ -121,58 +121,164 @@ export interface PrayerReminderSettings {
   vibrate: boolean;
 }
 
-export type ReminderSound = "chime" | "adhan" | "silent";
+/** The two selectable alarm tones — both synthesized, so neither can fail to ring. */
+export type ReminderSound = "bells" | "melody";
 
 export const REMINDER_SOUNDS: { id: ReminderSound; label: string }[] = [
-  { id: "chime", label: "Gentle chime" },
-  { id: "adhan", label: "Adhan (full)" },
-  { id: "silent", label: "Notification only" },
+  { id: "bells", label: "Serene bells" },
+  { id: "melody", label: "Soft melody" },
 ];
 
-/**
- * Full adhan recordings, verified reachable (HTTP 200) during development.
- * Played with a plain <audio> element — cross-origin playback needs no CORS
- * headers. If a source fails we fall back to the in-app chime.
- */
-export const ADHAN_URLS = [
-  "https://www.islamcan.com/audio/adhan/azan1.mp3",
-  "https://www.islamcan.com/audio/adhan/azan2.mp3",
-  "https://www.islamcan.com/audio/adhan/azan3.mp3",
-];
+/* ------------------------------------------------------------------ *
+ * Alarm synth. Everything below is pure Web Audio — no assets, no
+ * network — so an alarm rings the same offline as online. One shared
+ * AudioContext serves every play (repeated alarms otherwise burn
+ * through the browser's context limit), with a generated-impulse
+ * reverb send that lets the tones ring out instead of stopping dead.
+ * ------------------------------------------------------------------ */
 
-let adhanAudio: HTMLAudioElement | null = null;
+let synthCtx: AudioContext | null = null;
+let space: ConvolverNode | null = null;
 
-/** Play the configured reminder sound. Falls back to the chime on failure. */
-export function playReminderSound(sound: ReminderSound): void {
-  if (sound === "silent") return;
-  if (sound === "chime") {
-    playChime();
-    return;
-  }
+/** Shared context + reverb bus, or null when Web Audio is unavailable. */
+function synthRig(): { ctx: AudioContext; space: ConvolverNode } | null {
   try {
-    stopReminderSound();
-    adhanAudio = new Audio(ADHAN_URLS[0]);
-    adhanAudio.volume = 0.9;
-    adhanAudio.addEventListener("error", () => {
-      // Source unreachable — never leave the reminder silent.
-      if (sound === "adhan") playChime();
-    });
-    void adhanAudio.play().catch(() => playChime());
+    const Ctx =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return null;
+    if (!synthCtx || synthCtx.state === "closed") {
+      synthCtx = new Ctx();
+      space = null;
+    }
+    if (synthCtx.state === "suspended") void synthCtx.resume().catch(() => undefined);
+    if (!space) {
+      const conv = synthCtx.createConvolver();
+      // Noise burst with an exponential tail = a small, warm room.
+      const len = Math.max(1, Math.floor(synthCtx.sampleRate * 2.4));
+      const buf = synthCtx.createBuffer(2, len, synthCtx.sampleRate);
+      for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+        const data = buf.getChannelData(ch);
+        for (let i = 0; i < len; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.8);
+        }
+      }
+      conv.buffer = buf;
+      conv.connect(synthCtx.destination);
+      space = conv;
+    }
+    return { ctx: synthCtx, space };
   } catch {
-    playChime();
+    return null;
   }
 }
 
-/** Stop a playing adhan (used by preview controls). */
-export function stopReminderSound(): void {
-  if (adhanAudio) {
-    try {
-      adhanAudio.pause();
-      adhanAudio.currentTime = 0;
-    } catch {
-      /* ignore */
-    }
-    adhanAudio = null;
+type Note = [freq: number, level: number, ring: number];
+
+/**
+ * One struck bell: six inharmonic partials (the ratios that make a bell a
+ * bell rather than a beep), each with its own decay so the strike brightens
+ * then mellows as it rings.
+ */
+function strikeBell(
+  ctx: AudioContext,
+  dest: AudioNode,
+  freq: number,
+  at: number,
+  level: number,
+  ring: number,
+): void {
+  const partials: { ratio: number; amp: number }[] = [
+    { ratio: 1, amp: 1 },
+    { ratio: 2, amp: 0.46 },
+    { ratio: 3.01, amp: 0.28 },
+    { ratio: 4.17, amp: 0.15 },
+    { ratio: 5.43, amp: 0.08 },
+    { ratio: 6.79, amp: 0.05 },
+  ];
+  partials.forEach(({ ratio, amp }, i) => {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    const life = Math.max(0.3, ring * Math.pow(0.7, i)); // higher partials die first
+    osc.type = "sine";
+    osc.frequency.value = freq * ratio;
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(level * amp, at + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + life);
+    osc.connect(g).connect(dest);
+    osc.start(at);
+    osc.stop(at + life + 0.05);
+  });
+}
+
+/** One mallet note (marimba/celesta flavour): soft attack, fundamental + two overtones. */
+function strikeMallet(
+  ctx: AudioContext,
+  dest: AudioNode,
+  freq: number,
+  at: number,
+  level: number,
+  ring: number,
+): void {
+  const layers: { mult: number; type: OscillatorType; amp: number }[] = [
+    { mult: 1, type: "triangle", amp: 1 },
+    { mult: 2, type: "sine", amp: 0.32 },
+    { mult: 3, type: "sine", amp: 0.07 },
+  ];
+  layers.forEach(({ mult, type, amp }, i) => {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    const life = ring * Math.pow(0.8, i);
+    osc.type = type;
+    osc.frequency.value = freq * mult;
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(level * amp, at + 0.014);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + life);
+    osc.connect(g).connect(dest);
+    osc.start(at);
+    osc.stop(at + life + 0.05);
+  });
+}
+
+/** “Serene bells”: a slow descending C-major cascade that hangs in the air. */
+const BELL_CASCADE: Note[] = [
+  [1046.5, 0.5, 3.4], // C6
+  [783.99, 0.54, 3.2], // G5
+  [659.25, 0.58, 3.2], // E5
+  [523.25, 0.62, 3.6], // C5
+];
+
+/** “Soft melody”: a warm mallet phrase that rises through the pentatonic and settles. */
+const MELODY_PHRASE: Note[] = [
+  [523.25, 0.55, 1.7], // C5
+  [659.25, 0.55, 1.7], // E5
+  [783.99, 0.55, 1.8], // G5
+  [880.0, 0.52, 1.7], // A5
+  [783.99, 0.55, 2.1], // G5
+];
+
+/** Play one of the two alarm tones. Safe to call anywhere (no-ops without Web Audio). */
+export function playReminderSound(sound: ReminderSound): void {
+  const rig = synthRig();
+  if (!rig) return; // toast + notification still fire
+  const { ctx, space: reverb } = rig;
+  const bus = ctx.createGain();
+  bus.gain.value = 0.45;
+  bus.connect(ctx.destination);
+  const wet = ctx.createGain();
+  wet.gain.value = 0.5; // half the tone goes to the room
+  wet.connect(reverb);
+  bus.connect(wet);
+
+  const at = ctx.currentTime + 0.06;
+  if (sound === "melody") {
+    MELODY_PHRASE.forEach(([freq, level, ring], i) =>
+      strikeMallet(ctx, bus, freq, at + i * 0.26, level, ring),
+    );
+  } else {
+    BELL_CASCADE.forEach(([freq, level, ring], i) =>
+      strikeBell(ctx, bus, freq, at + i * 0.32, level, ring),
+    );
   }
 }
 
@@ -194,7 +300,7 @@ export const DEFAULT_PRAYER_SETTINGS: PrayerAppSettings = {
   method: "mwl",
   asrFactor: 1,
   offsets: {},
-  reminders: { enabled: {}, leadMinutes: 0, sound: "chime", vibrate: true },
+  reminders: { enabled: {}, leadMinutes: 0, sound: "bells", vibrate: true },
 };
 
 function loadOffsets(raw: unknown): Partial<Record<PrayerName, number>> {
@@ -238,10 +344,9 @@ export function loadPrayerSettings(): PrayerAppSettings {
           parsed.reminders?.leadMinutes === 5 || parsed.reminders?.leadMinutes === 10
             ? parsed.reminders.leadMinutes
             : 0,
-        sound:
-          parsed.reminders?.sound === "adhan" || parsed.reminders?.sound === "silent"
-            ? parsed.reminders.sound
-            : "chime",
+        // v1 stored "chime" | "adhan" | "silent"; the two-tone picker
+        // replaces all three, so anything but a current id falls back.
+        sound: parsed.reminders?.sound === "melody" ? "melody" : "bells",
         vibrate:
           typeof parsed.reminders?.vibrate === "boolean"
             ? parsed.reminders.vibrate
@@ -436,33 +541,6 @@ export function formatCountdown(ms: number): string {
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
   return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
-/** Gentle 3-tone chime (no audio assets needed). Safe to call anywhere. */
-export function playChime(): void {
-  try {
-    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const start = ctx.currentTime + 0.05;
-    const tones = [523.25, 659.25, 783.99]; // C5 E5 G5
-    tones.forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      const t = start + i * 0.28;
-      gain.gain.setValueAtTime(0, t);
-      gain.gain.linearRampToValueAtTime(0.22, t + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + 1);
-    });
-    window.setTimeout(() => void ctx.close(), 2200);
-  } catch {
-    /* audio unavailable */
-  }
 }
 
 export { PRAYER_LABELS };

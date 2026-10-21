@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { playChime } from "@/lib/prayerSettings";
+import { loadPrayerSettings, playReminderSound } from "@/lib/prayerSettings";
 import { Plus, RotateCcw, Target, Trash2, Undo2, Volume2, Vibrate } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -203,7 +203,7 @@ export default function Tasbih() {
       }
       if (complete && prev.sound && !completingRef.current) {
         completingRef.current = true;
-        playChime();
+        playReminderSound(loadPrayerSettings().reminders.sound);
         window.setTimeout(() => {
           completingRef.current = false;
         }, 800);

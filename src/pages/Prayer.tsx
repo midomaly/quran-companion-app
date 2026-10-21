@@ -510,8 +510,9 @@ export default function Prayer() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  “Adhan (full)” streams the recorded adhan from islamcan.com;
-                  if it can’t load, the chime plays instead.
+                  Two tones, both synthesized on your device — no streaming, so
+                  the alarm rings instantly and offline. Tap “Test alarm” to
+                  hear the selected one.
                 </p>
               </div>
 

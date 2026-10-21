@@ -15,7 +15,11 @@ import {
   loadReminderStore,
   reminderDue,
 } from "@/lib/reminders";
-import { loadPrayerSettings, playReminderSound } from "@/lib/prayerSettings";
+import {
+  loadPrayerSettings,
+  playAlarmSound,
+  stopAlarmSound,
+} from "@/lib/prayerSettings";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
@@ -56,8 +60,15 @@ export function ReminderHost() {
         } catch {
           /* vibration unsupported */
         }
-        playReminderSound(loadPrayerSettings().reminders.sound);
-        toast(reminder.label);
+        const alarm = loadPrayerSettings().reminders;
+        playAlarmSound(alarm.sound, {
+          volume: alarm.volume,
+          adhanTrack: alarm.adhanTrack,
+        });
+        toast(reminder.label, {
+          duration: alarm.sound === "adhan" || alarm.sound === "fajr-adhan" ? 120_000 : 10_000,
+          action: { label: "Stop", onClick: () => stopAlarmSound() },
+        });
       }
     };
 

@@ -39,7 +39,17 @@ account is ever required to read.
   style solar position math) computes Fajr→Isha for your location with 9
   calculation methods, Madhab/Asr choice and high-latitude fallback;
   countdown to the next prayer, notification permission, and per-prayer
-  adhān alarms that chime in-app (reminder host runs app-wide).
+  adhān alarms (reminder host runs app-wide).
+- **Prayer Alarm & Adhan Settings** (`/alarms`): the alarm control centre —
+  per-prayer enable, timing (at prayer time / 5 / 10 / 15 minutes before), a
+  sound library of **real recordings** (two full adhans + the Fajr adhan with
+  its extra wording, from archive.org's Public-Domain “Adhan Recordings from
+  Doha, Qatar”), previewed with play/pause/stop before selecting, plus two
+  synthesized offline tones, silent mode, alarm volume, quiet hours, test
+  alarm, notification & vibration control and restore-defaults. The home
+  screen shows the next prayer with a live countdown and its alarm status.
+  Nothing fake stands in for the adhan: a recording that fails to load is
+  shown as unavailable, never as ringing.
 - **Notification center** (`/reminders`): personal reminders with weekday
   schedules, quiet hours and snooze — same honest in-app engine.
 - **Qibla** (`/qibla`): great-circle bearing and distance to the Kaaba from
@@ -176,6 +186,44 @@ time. If generated, `assetlinks.json` ships with each release — host it at
 `/.well-known/assetlinks.json` on the Pages site to hide the browser bar in
 the installed app.
 
+### Adhan alarms: platform limits and the native Android path
+
+Alarms are driven by the in-app scheduler (`duePrayerAlarms`, executed by
+`PrayerReminderHost` on a 20-second tick plus a visibility check, with a
+3-minute grace window and once-per-day dedupe). This is the honest capability
+matrix — the settings screen states it in plain language too:
+
+| Situation | What happens |
+| --- |
+| App open (browser tab or installed TWA) | Adhan/tone, vibration, notification and toast fire on time, once per prayer per day. |
+| Tab frozen by Android battery optimization | Timers stop. Set the app to **Unrestricted** battery (Settings → Apps → Noor Al-Islam → Battery). |
+| App closed or force-stopped | Nothing can ring. Browsers cannot wake a closed tab without a push server, and a web-push notification cannot carry a full-length custom adhan sound on Android. The app never pretends otherwise. |
+| Device restart | Alarms re-arm automatically the next time the app opens — they are recomputed from the prayer engine, never persisted as stale one-shots. |
+
+For **exact background alarms** (the adhan rings at Fajr with the app closed)
+the supported route is native Android. The repo already produces a signed TWA
+APK in CI; the missing pieces are:
+
+1. Manifest permissions: `USE_EXACT_ALARM` (alarm-clock use case),
+   `POST_NOTIFICATIONS`, and `FOREGROUND_SERVICE_MEDIA_PLAYBACK` if a
+   foreground service plays the adhan.
+2. `AlarmManager.setExactAndAllowWhileIdle()` per prayer, re-armed from a
+   `BootReceiver` on `ACTION_BOOT_COMPLETED` after a restart. Use the
+   prayer+date as the `PendingIntent` request code, and call
+   `AlarmManager.cancel` whenever a toggle/lead changes — the web settings
+   screen already funnels every change through one place, so a thin JS
+   bridge (`window.NoorAndroid?.scheduleAlarm(...)`, feature-detected, absent
+   = web behaviour) keeps both layers consistent.
+3. A full-screen-intent notification (`Notification.fullScreenIntent`) at
+   prayer time with a `MediaPlayer` playing the same adhan recording bundled
+   in `res/raw/` so it works fully offline.
+4. Keep this repo as the web layer and add a Kotlin wrapper that loads the
+   Pages URL in a `WebView` and implements the bridge above; Bubblewrap
+   supports custom code via `bubblewrap merge`.
+
+Until that wrapper exists, the TWA build inherits the table above: honest
+in-app alarms while open, no background ringing.
+
 ### Project layout
 
 - `src/lib/surahs.ts` — verified surah + juz metadata (do not hand-edit)
@@ -184,7 +232,10 @@ the installed app.
 - `src/lib/quranText.ts` — pure display helpers (basmala split, daily ayah)
 - `src/lib/plans.ts` — Khatmah (Qur'an completion) planner math
 - `src/lib/prayerTimes.ts` — offline astronomical prayer time engine
-- `src/lib/prayerSettings.ts` — method/madhab presets, alarms, next-prayer math
+- `src/lib/prayerSettings.ts` — method/madhab presets, the pure alarm
+  scheduler (`duePrayerAlarms`), volume/quiet hours, next-prayer math
+- `src/lib/adhan.ts` — verified public-domain adhan catalog (archive.org
+  URLs + license notes) and the play/pause/stop playback controller
 - `src/lib/qibla.ts` — great-circle bearing to the Kaaba
 - `src/lib/hijri.ts` — Hijri parts, Islamic events, ± adjustment, conversion
 - `src/lib/reminders.ts` + `src/lib/events.ts` — reminder engine, personal events
@@ -200,9 +251,10 @@ the installed app.
 - `public/sw.js` + `public/icons/` — offline-shell service worker (registered
   in production builds only) and the PNG manifest icons Chrome needs for
   "Install app" / "Add to Home screen" (regenerate with the script above)
-- `src/pages/` — `Home`, `QuranHub`, `Reader`, `Prayer`, `Qibla`, `Tasbih`,
-  `Duas`, `Hadith`, `CalendarPage`, `Reminders`, `Ramadhan`, `Mosques`,
-  `Learn`, `Downloads`, `Tracker`, plus `Auth` and `Dashboard`
+- `src/pages/` — `Home`, `QuranHub`, `Reader`, `Prayer`, `AlarmSettings`,
+  `Qibla`, `Tasbih`, `Duas`, `Hadith`, `CalendarPage`, `Reminders`,
+  `Ramadhan`, `Mosques`, `Learn`, `Downloads`, `Tracker`, plus `Auth` and
+  `Dashboard`
 - `scripts/verify-live-data.ts` — religious-data integrity check
 
 ### Scope notes
@@ -213,6 +265,10 @@ companion tools work fully offline without sign-in; signing in (`/auth` →
 recent searches across devices. Reminders and adhān alarms are honest
 in-app notifications: they fire while the app is open (Web Notifications
 API, no push service is configured), never silently pretending otherwise.
+The adhan recordings are the Public-Domain-marked “Adhan Recordings from
+Doha, Qatar” on archive.org (exact URLs and licence notes in
+`src/lib/adhan.ts`); the alternative tones are synthesized on-device and
+need no assets.
 
 ---
 

@@ -203,7 +203,10 @@ export default function Tasbih() {
       }
       if (complete && prev.sound && !completingRef.current) {
         completingRef.current = true;
-        playReminderSound(loadPrayerSettings().reminders.sound);
+        // Completion chime follows the user's alarm tone when they picked one;
+        // adhan/silent selections fall back to the serene bells tone.
+        const chosen = loadPrayerSettings().reminders.sound;
+        playReminderSound(chosen === "bells" || chosen === "melody" ? chosen : "bells");
         window.setTimeout(() => {
           completingRef.current = false;
         }, 800);

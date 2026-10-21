@@ -13,9 +13,11 @@
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
-const { REMINDER_SOUNDS, playReminderSound } = await import(
-  "../src/lib/prayerSettings?fresh-mock=1"
-);
+const { playReminderSound } = await import("../src/lib/prayerSettings?fresh-mock=1");
+
+// The two synthesized tones (the adhan entries stream real recordings and are
+// covered by tests/prayer-alarms.test.ts).
+const TONES = ["bells", "melody"] as const;
 
 const BELL_OSC = 4 * 6; // four strikes, six inharmonic partials each
 const MELODY_OSC = 5 * 3; // five notes, three layers each
@@ -60,8 +62,11 @@ function makeMock() {
           startedAt = t;
         },
         stop(t: number) {
-          if (startedAt === null) violations.push("oscillator stopped before start");
-          else if (!(t > startedAt)) violations.push(`stop ${t} <= start ${startedAt}`);
+          // Stopping before the start time is spec-legal and means "never
+          // sound" (the Stop action / never-stacking rule uses it); stopping
+          // before the node ever started is the real bug.
+          if (startedAt === null) violations.push("oscillator stopped before it ever started");
+          if (!(t >= 0) || Number.isNaN(t)) violations.push(`stop at invalid time ${t}`);
         },
       };
     }
@@ -100,7 +105,7 @@ describe("alarm tone synth", () => {
   test("both tones schedule a valid graph with their full strike counts", () => {
     const oscBefore = mock.count();
     const errBefore = mock.violations.length;
-    for (const { id } of REMINDER_SOUNDS) playReminderSound(id);
+    for (const id of TONES) playReminderSound(id);
     expect(mock.violations.slice(errBefore)).toEqual([]);
     expect(mock.count() - oscBefore).toBe(BELL_OSC + MELODY_OSC);
   });

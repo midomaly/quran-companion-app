@@ -20,6 +20,7 @@ const AuthPage = lazy(() => import("./pages/Auth.tsx"));
 const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 const Prayer = lazy(() => import("./pages/Prayer.tsx"));
+const AlarmSettings = lazy(() => import("./pages/AlarmSettings.tsx"));
 const Qibla = lazy(() => import("./pages/Qibla.tsx"));
 const Tasbih = lazy(() => import("./pages/Tasbih.tsx"));
 const Duas = lazy(() => import("./pages/Duas.tsx"));
@@ -170,6 +171,7 @@ createRoot(document.getElementById("root")!).render(
                   <Route path="/quran" element={<QuranHub />} />
                   <Route path="/quran/:surahId" element={<Reader />} />
                   <Route path="/prayer" element={<Prayer />} />
+                  <Route path="/alarms" element={<AlarmSettings />} />
                   <Route path="/qibla" element={<Qibla />} />
                   <Route path="/tasbih" element={<Tasbih />} />
                   <Route path="/duas" element={<Duas />} />

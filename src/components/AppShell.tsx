@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   Bell,
+  BellRing,
   BookOpen,
   CalendarDays,
   CircleDot,
@@ -51,6 +52,7 @@ const MORE_LINKS = [
   { to: "/hadith", labelKey: "nav.hadith", label: "Hadith library", icon: ScrollText },
   { to: "/learn", labelKey: "nav.learn", label: "Learning center", icon: GraduationCap },
   { to: "/ramadan", labelKey: "nav.ramadan", label: "Ramadan & Zakat", icon: MoonStar },
+  { to: "/alarms", labelKey: "nav.alarms", label: "Prayer alarms & Adhan", icon: BellRing },
   { to: "/reminders", labelKey: "nav.reminders", label: "Reminders", icon: Bell },
   { to: "/mosques", labelKey: "nav.mosques", label: "Mosque finder", icon: MapPin },
   { to: "/downloads", labelKey: "nav.downloads", label: "Offline & downloads", icon: Download },

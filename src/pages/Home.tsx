@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
+  BellRing,
   Bookmark,
   BookOpen,
   CalendarDays,
@@ -25,6 +27,17 @@ import { dailyAyahPick } from "@/lib/quranText";
 import { useAppState } from "@/lib/app-state";
 import { errorMessage, fetchSurahArabic, fetchSurahTranslation, type AyahText } from "@/lib/quranApi";
 import { getSurah } from "@/lib/surahs";
+import {
+  REMINDER_SOUNDS,
+  formatCountdown,
+  nextPrayer,
+  prayerInstant,
+  resolvePrayerLocation,
+  shiftDateParts,
+  timesForDate,
+  usePrayerSettings,
+} from "@/lib/prayerSettings";
+import { PRAYER_LABELS, formatHours } from "@/lib/prayerTimes";
 import { cn } from "@/lib/utils";
 
 const container = {
@@ -77,6 +90,126 @@ const QUICK_LINKS = [
   { icon: Search, label: "Search", to: "/quran?tab=search" },
   { icon: Bookmark, label: "Bookmarks", to: "/quran?tab=bookmarks" },
 ] as const;
+
+/**
+ * Next-prayer dashboard: name, local time, live countdown, alarm status and a
+ * quick jump into the alarm settings. Recomputes every second from the same
+ * verified engine the alarms use, so date, time-zone and location changes are
+ * picked up automatically.
+ */
+function NextPrayerCard() {
+  const [settings] = usePrayerSettings();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const deviceTz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
+  const resolved = resolvePrayerLocation(settings, deviceTz);
+  const next = resolved ? nextPrayer(now, resolved, settings) : null;
+
+  // Wall-clock label in the location's zone (today or tomorrow's table).
+  let timeLabel: string | null = null;
+  if (resolved && next) {
+    for (const shift of [0, 1]) {
+      const date = shiftDateParts(now, shift);
+      const times = timesForDate(resolved, date, settings);
+      const hours = times[next.name];
+      if (hours !== null && prayerInstant(resolved, date, hours) === next.at) {
+        timeLabel = formatHours(hours);
+        break;
+      }
+    }
+  }
+
+  const alarmOn = next ? !!settings.reminders.enabled[next.name] : false;
+  const soundLabel =
+    REMINDER_SOUNDS.find((s) => s.id === settings.reminders.sound)?.label ?? "Adhan";
+  const lead = settings.reminders.leadMinutes;
+
+  if (!resolved) {
+    return (
+      <motion.section
+        variants={item}
+        className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5"
+        aria-label="Next prayer"
+      >
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+          <Clock className="size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold tracking-tight">Next prayer</span>
+          <span className="block truncate text-xs text-muted-foreground">
+            Set your location to see accurate times and arm the adhan
+          </span>
+        </span>
+        <Link
+          to="/prayer"
+          className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:border-primary/50"
+        >
+          Set up
+        </Link>
+      </motion.section>
+    );
+  }
+
+  return (
+    <motion.section
+      variants={item}
+      className="mt-4 rounded-2xl border border-border bg-card p-4"
+      aria-label="Next prayer"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-[11px] font-bold tracking-[0.2em] text-gold uppercase">
+          Next prayer
+        </h2>
+        <Link
+          to="/alarms"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+        >
+          <BellRing className="size-3.5" />
+          Alarm settings
+        </Link>
+      </div>
+      {next ? (
+        <div className="mt-2 flex items-end justify-between gap-3">
+          <div>
+            <p className="text-2xl font-bold tracking-tight">
+              {PRAYER_LABELS[next.name]}
+              {timeLabel && (
+                <span className="ml-2 text-base font-semibold text-muted-foreground">
+                  {timeLabel}
+                </span>
+              )}
+            </p>
+            <p
+              className={cn(
+                "mt-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                alarmOn
+                  ? "bg-primary/10 text-primary"
+                  : "bg-secondary text-muted-foreground",
+              )}
+            >
+              <BellRing className="size-3" />
+              {alarmOn
+                ? `Alarm on · ${soundLabel}${lead > 0 ? ` · ${lead} min before` : ""}`
+                : "Alarm off for this prayer"}
+            </p>
+          </div>
+          <p className="text-3xl font-bold tabular-nums tracking-tight">
+            {formatCountdown(next.at - now)}
+          </p>
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Prayer times unavailable for this location.
+        </p>
+      )}
+    </motion.section>
+  );
+}
 
 const COMPANION_LINKS = [
   { icon: Clock, label: "Prayer times", to: "/prayer", hint: "Adhān alarms" },
@@ -211,6 +344,9 @@ export default function Home() {
           </p>
         </div>
       </motion.section>
+
+      {/* Next prayer dashboard */}
+      <NextPrayerCard />
 
       {/* Continue reading */}
       <motion.button

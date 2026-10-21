@@ -1,28 +1,29 @@
 /**
  * App-wide prayer alarm host — mounted once in main.tsx, renders nothing.
  *
- * On a 20s tick (plus every time the tab becomes visible again) it checks
- * today's prayer times against the reminder settings and fires each enabled
- * alarm exactly once per day: an in-app toast (always), a system notification
- * (when permission is granted) and the selected alarm tone. A 3-minute grace
- * catches times that passed while the tab was asleep.
+ * On a 20s tick (plus every time the tab becomes visible again) it asks the
+ * pure scheduler (duePrayerAlarms) which alarms are due and fires each one
+ * exactly once per day: an in-app toast (always, with a Stop action), a
+ * system notification (when enabled and permitted), vibration and the
+ * configured sound — a verified adhan recording (Fajr gets the Fajr adhan),
+ * a synthesized tone, or nothing. A 3-minute grace window catches times that
+ * passed while the tab was asleep, and quiet hours silence everything.
  */
 
 import { PRAYER_LABELS, formatHours } from "@/lib/prayerTimes";
 import {
-  REMINDABLE_PRAYERS,
-  playReminderSound,
-  prayerInstant,
+  playAlarmSound,
   resolvePrayerLocation,
   shiftDateParts,
+  stopAlarmSound,
   timesForDate,
+  duePrayerAlarms,
   usePrayerSettings,
 } from "@/lib/prayerSettings";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
 const TICK_MS = 20_000;
-const GRACE_MS = 3 * 60_000;
 
 export function PrayerReminderHost() {
   const [settings] = usePrayerSettings();
@@ -36,17 +37,12 @@ export function PrayerReminderHost() {
       const now = Date.now();
       const date = shiftDateParts(now, 0);
       const dateKey = `${date.year}-${date.month}-${date.day}`;
-      const times = timesForDate(resolved, date, settings);
       const lead = settings.reminders.leadMinutes;
+      const times = timesForDate(resolved, date, settings);
+      const sound = settings.reminders.sound;
 
-      for (const name of REMINDABLE_PRAYERS) {
-        if (!settings.reminders.enabled[name]) continue;
-        const at = prayerInstant(resolved, date, times[name]);
-        if (at === null) continue;
-        const fireAt = at - lead * 60_000;
-        if (now < fireAt || now - fireAt > GRACE_MS) continue;
-
-        const evKey = `noor:remind:${dateKey}:${name}:${lead}`;
+      for (const alarm of duePrayerAlarms(now, resolved, settings)) {
+        const evKey = `noor:remind:${dateKey}:${alarm.name}:${lead}`;
         try {
           if (sessionStorage.getItem(evKey)) continue;
           sessionStorage.setItem(evKey, "1");
@@ -54,13 +50,17 @@ export function PrayerReminderHost() {
           /* storage unavailable — worst case: duplicate reminder */
         }
 
-        const timeLabel = formatHours(times[name]);
+        const timeLabel = formatHours(times[alarm.name]);
         const body =
           lead > 0
-            ? `${PRAYER_LABELS[name]} in ${lead} minutes · ${timeLabel}`
-            : `It is time for ${PRAYER_LABELS[name]} · ${timeLabel}`;
+            ? `${PRAYER_LABELS[alarm.name]} in ${lead} minutes · ${timeLabel}`
+            : `It is time for ${PRAYER_LABELS[alarm.name]} · ${timeLabel}`;
 
-        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        if (
+          settings.reminders.notify &&
+          typeof Notification !== "undefined" &&
+          Notification.permission === "granted"
+        ) {
           try {
             new Notification("Noor Al-Islam", {
               body,
@@ -78,8 +78,16 @@ export function PrayerReminderHost() {
             /* vibration unsupported */
           }
         }
-        playReminderSound(settings.reminders.sound);
-        toast(body);
+        playAlarmSound(sound, {
+          volume: settings.reminders.volume,
+          isFajr: alarm.name === "fajr",
+          adhanTrack: settings.reminders.adhanTrack,
+        });
+        toast(body, {
+          // A full adhan runs for minutes — keep the Stop action around.
+          duration: sound === "adhan" || sound === "fajr-adhan" ? 120_000 : 10_000,
+          action: { label: "Stop", onClick: () => stopAlarmSound() },
+        });
       }
     };
 

@@ -7,7 +7,9 @@
  * - City presets (lat/lng + IANA time zone — DST handled by Intl).
  * - Persistent settings (location, method, Asr madhhab, reminders).
  * - Next-prayer math in absolute instants (works for cities in other zones).
- * - The two WebAudio alarm tones (synthesized — no audio assets or network).
+ * - Adhan alarms: verified public-domain recordings (./adhan) plus two
+ *   synthesized WebAudio tones, a pure scheduler (duePrayerAlarms), volume,
+ *   quiet hours and per-prayer enable flags.
  */
 
 import { useCallback, useState } from "react";
@@ -23,6 +25,15 @@ import {
   type PrayerTimes,
   type YearMonthDay,
 } from "./prayerTimes";
+import { inQuietHours, isValidTime, type QuietHours } from "./reminders";
+import {
+  DEFAULT_ADHAN_TRACK,
+  FAJR_ADHAN_TRACK,
+  isAdhanTrackId,
+  playAdhan,
+  stopAdhan,
+  type AdhanTrackId,
+} from "./adhan";
 
 export interface CityPreset {
   id: string;
@@ -114,19 +125,66 @@ export interface PrayerLocationChoice {
 export interface PrayerReminderSettings {
   enabled: Partial<Record<PrayerName, boolean>>;
   /** Notify this many minutes before the prayer; 0 = exactly at the time. */
-  leadMinutes: 0 | 5 | 10;
+  leadMinutes: 0 | 5 | 10 | 15;
   /** What plays when a reminder fires. */
   sound: ReminderSound;
-  /** Vibrate at the reminder (where the device supports it). */
+  /** Which verified full-adhan recording rings for non-Fajr prayers. */
+  adhanTrack: AdhanTrackId;
+  /** Alarm volume 0–100 (adhan playback and synthesized tones). */
+  volume: number;
+  /** Show a system notification at the alarm (permission permitting). */
+  notify: boolean;
+  /** Vibrate at the alarm (where the device supports it). */
   vibrate: boolean;
+  /** Mute everything overnight; alarms inside quiet hours do not ring. */
+  quiet: QuietHours;
 }
 
-/** The two selectable alarm tones — both synthesized, so neither can fail to ring. */
-export type ReminderSound = "bells" | "melody";
+/**
+ * What an alarm plays. Adhan selections stream a verified public-domain
+ * recording (see ./adhan); tones are synthesized on-device; silent rings
+ * nothing. Whenever an adhan is selected, Fajr automatically gets the Fajr
+ * recording — its extra wording only exists there.
+ */
+export type ReminderSound = "adhan" | "fajr-adhan" | "bells" | "melody" | "silent";
 
-export const REMINDER_SOUNDS: { id: ReminderSound; label: string }[] = [
-  { id: "bells", label: "Serene bells" },
-  { id: "melody", label: "Soft melody" },
+export const REMINDER_SOUNDS: {
+  id: ReminderSound;
+  label: string;
+  description: string;
+  /** True when the id streams a recording (needs a connection). */
+  remote: boolean;
+}[] = [
+  {
+    id: "adhan",
+    label: "Adhan — full call",
+    description: "The complete call to prayer. Fajr automatically gets the Fajr adhan.",
+    remote: true,
+  },
+  {
+    id: "fajr-adhan",
+    label: "Fajr Adhan",
+    description: "The Fajr call with “the prayer is better than sleep”.",
+    remote: true,
+  },
+  {
+    id: "bells",
+    label: "Serene bells",
+    description: "A short synthesized chime — works fully offline.",
+    remote: false,
+  },
+  {
+    id: "melody",
+    label: "Soft melody",
+    description: "A short synthesized phrase — works fully offline.",
+    remote: false,
+  },
+  {
+    id: "silent",
+    label: "Silent",
+    description: "Notification and vibration only — no sound.",
+    remote: false,
+  },
 ];
 
 /* ------------------------------------------------------------------ *
@@ -187,6 +245,7 @@ function strikeBell(
   at: number,
   level: number,
   ring: number,
+  registry: OscillatorNode[],
 ): void {
   const partials: { ratio: number; amp: number }[] = [
     { ratio: 1, amp: 1 },
@@ -208,6 +267,7 @@ function strikeBell(
     osc.connect(g).connect(dest);
     osc.start(at);
     osc.stop(at + life + 0.05);
+    registry.push(osc);
   });
 }
 
@@ -219,6 +279,7 @@ function strikeMallet(
   at: number,
   level: number,
   ring: number,
+  registry: OscillatorNode[],
 ): void {
   const layers: { mult: number; type: OscillatorType; amp: number }[] = [
     { mult: 1, type: "triangle", amp: 1 },
@@ -237,6 +298,7 @@ function strikeMallet(
     osc.connect(g).connect(dest);
     osc.start(at);
     osc.stop(at + life + 0.05);
+    registry.push(osc);
   });
 }
 
@@ -257,13 +319,31 @@ const MELODY_PHRASE: Note[] = [
   [783.99, 0.55, 2.1], // G5
 ];
 
-/** Play one of the two alarm tones. Safe to call anywhere (no-ops without Web Audio). */
-export function playReminderSound(sound: ReminderSound): void {
+/** Oscillators from the tone currently ringing, so “Stop” can silence it. */
+let toneOscillators: OscillatorNode[] = [];
+
+/** Stop a ringing synthesized tone. Safe to call anywhere. */
+export function stopReminderSound(): void {
+  const ctx = synthCtx;
+  for (const osc of toneOscillators) {
+    try {
+      if (ctx) osc.stop(ctx.currentTime);
+    } catch {
+      /* already stopped */
+    }
+  }
+  toneOscillators = [];
+}
+
+/** Play one of the synthesized tones (volume 0–100). Safe to call anywhere. */
+export function playReminderSound(sound: ReminderSound, volume = 100): void {
+  if (sound !== "bells" && sound !== "melody") return;
   const rig = synthRig();
   if (!rig) return; // toast + notification still fire
+  stopReminderSound(); // never stack tones
   const { ctx, space: reverb } = rig;
   const bus = ctx.createGain();
-  bus.gain.value = 0.45;
+  bus.gain.value = 0.12 + (Math.min(100, Math.max(0, volume)) / 100) * 0.38;
   bus.connect(ctx.destination);
   const wet = ctx.createGain();
   wet.gain.value = 0.5; // half the tone goes to the room
@@ -273,13 +353,51 @@ export function playReminderSound(sound: ReminderSound): void {
   const at = ctx.currentTime + 0.06;
   if (sound === "melody") {
     MELODY_PHRASE.forEach(([freq, level, ring], i) =>
-      strikeMallet(ctx, bus, freq, at + i * 0.26, level, ring),
+      strikeMallet(ctx, bus, freq, at + i * 0.26, level, ring, toneOscillators),
     );
   } else {
     BELL_CASCADE.forEach(([freq, level, ring], i) =>
-      strikeBell(ctx, bus, freq, at + i * 0.32, level, ring),
+      strikeBell(ctx, bus, freq, at + i * 0.32, level, ring, toneOscillators),
     );
   }
+}
+
+export interface AlarmSoundOptions {
+  /** 0–100, from the alarm-volume setting. */
+  volume?: number;
+  /** Fajr alarms automatically use the Fajr adhan recording. */
+  isFajr?: boolean;
+  /** Which full-adhan recording rings for non-Fajr prayers. */
+  adhanTrack?: AdhanTrackId;
+}
+
+/**
+ * Play whatever an alarm is configured to play. Adhan selections use the
+ * verified recordings; tones are synthesized; only one alarm sound rings at
+ * a time — starting one silences the other (no duplicate stacking).
+ */
+export function playAlarmSound(sound: ReminderSound, opts: AlarmSoundOptions = {}): void {
+  const volume = opts.volume ?? 100;
+  if (sound === "silent") return;
+  if (sound === "adhan" || sound === "fajr-adhan") {
+    stopReminderSound();
+    const track =
+      sound === "fajr-adhan" || opts.isFajr
+        ? FAJR_ADHAN_TRACK
+        : isAdhanTrackId(opts.adhanTrack)
+          ? opts.adhanTrack
+          : DEFAULT_ADHAN_TRACK;
+    void playAdhan(track, volume);
+    return;
+  }
+  stopAdhan();
+  playReminderSound(sound, volume);
+}
+
+/** Silence everything an alarm can ring (adhan + tone). Safe anywhere. */
+export function stopAlarmSound(): void {
+  stopAdhan();
+  stopReminderSound();
 }
 
 /** Manual per-prayer adjustment in minutes (−30…+30), applied after the engine. */
@@ -300,8 +418,44 @@ export const DEFAULT_PRAYER_SETTINGS: PrayerAppSettings = {
   method: "mwl",
   asrFactor: 1,
   offsets: {},
-  reminders: { enabled: {}, leadMinutes: 0, sound: "bells", vibrate: true },
+  reminders: {
+    enabled: {},
+    leadMinutes: 0,
+    sound: "adhan",
+    adhanTrack: DEFAULT_ADHAN_TRACK,
+    volume: 80,
+    notify: true,
+    vibrate: true,
+    quiet: { enabled: false, from: "23:00", to: "05:30" },
+  },
 };
+
+const KNOWN_SOUNDS: string[] = ["adhan", "fajr-adhan", "bells", "melody", "silent"];
+
+/** v1 stored "chime"; the two-tone era stored "bells" | "melody"; all survive. */
+function normalizeReminderSound(raw: unknown): ReminderSound {
+  if (raw === "chime") return "bells";
+  if (typeof raw === "string" && KNOWN_SOUNDS.includes(raw)) return raw as ReminderSound;
+  return DEFAULT_PRAYER_SETTINGS.reminders.sound;
+}
+
+function normalizeVolume(raw: unknown): number {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) {
+    return DEFAULT_PRAYER_SETTINGS.reminders.volume;
+  }
+  return Math.min(100, Math.max(0, Math.round(raw)));
+}
+
+function normalizeQuiet(raw: unknown): QuietHours {
+  const d = DEFAULT_PRAYER_SETTINGS.reminders.quiet;
+  const q = raw as Partial<QuietHours> | undefined;
+  if (!q || typeof q !== "object") return { ...d };
+  return {
+    enabled: q.enabled === true,
+    from: isValidTime(q.from) ? q.from : d.from,
+    to: isValidTime(q.to) ? q.to : d.to,
+  };
+}
 
 function loadOffsets(raw: unknown): Partial<Record<PrayerName, number>> {
   if (!raw || typeof raw !== "object") return {};
@@ -341,16 +495,23 @@ export function loadPrayerSettings(): PrayerAppSettings {
             ? parsed.reminders.enabled
             : {},
         leadMinutes:
-          parsed.reminders?.leadMinutes === 5 || parsed.reminders?.leadMinutes === 10
+          parsed.reminders?.leadMinutes === 5 ||
+          parsed.reminders?.leadMinutes === 10 ||
+          parsed.reminders?.leadMinutes === 15
             ? parsed.reminders.leadMinutes
             : 0,
-        // v1 stored "chime" | "adhan" | "silent"; the two-tone picker
-        // replaces all three, so anything but a current id falls back.
-        sound: parsed.reminders?.sound === "melody" ? "melody" : "bells",
+        sound: normalizeReminderSound(parsed.reminders?.sound),
+        adhanTrack: isAdhanTrackId(parsed.reminders?.adhanTrack)
+          ? parsed.reminders.adhanTrack
+          : DEFAULT_ADHAN_TRACK,
+        volume: normalizeVolume(parsed.reminders?.volume),
+        notify:
+          typeof parsed.reminders?.notify === "boolean" ? parsed.reminders.notify : true,
         vibrate:
           typeof parsed.reminders?.vibrate === "boolean"
             ? parsed.reminders.vibrate
             : true,
+        quiet: normalizeQuiet(parsed.reminders?.quiet),
       },
     };
   } catch {
@@ -544,3 +705,46 @@ export function formatCountdown(ms: number): string {
 }
 
 export { PRAYER_LABELS };
+
+/* ------------------------------------------------------------------ *
+ * Alarm scheduling — pure, so tests can prove which alarm rings when.
+ * ------------------------------------------------------------------ */
+
+/** A tab asleep at the exact minute still catches the alarm this long after. */
+export const ALARM_GRACE_MS = 3 * 60_000;
+
+export interface DuePrayerAlarm {
+  name: PrayerName;
+  /** Instant the alarm should ring (prayer time minus the lead). */
+  fireAt: number;
+  /** The prayer time itself (ms). */
+  prayerAt: number;
+}
+
+/**
+ * Which of today's prayer alarms should fire right now (pure): the prayer is
+ * enabled, `now` sits inside the grace window after its fire time, and quiet
+ * hours are not muting alarms. The host turns each result into toast +
+ * notification + sound once — its sessionStorage key gives the once-per-day
+ * dedupe (a page reload inside the grace window cannot double-ring).
+ */
+export function duePrayerAlarms(
+  now: number,
+  resolved: ResolvedPrayerLocation,
+  settings: PrayerAppSettings,
+): DuePrayerAlarm[] {
+  if (inQuietHours(settings.reminders.quiet, new Date(now))) return [];
+  const date = shiftDateParts(now, 0);
+  const times = timesForDate(resolved, date, settings);
+  const lead = settings.reminders.leadMinutes;
+  const out: DuePrayerAlarm[] = [];
+  for (const name of REMINDABLE_PRAYERS) {
+    if (!settings.reminders.enabled[name]) continue;
+    const at = prayerInstant(resolved, date, times[name]);
+    if (at === null) continue;
+    const fireAt = at - lead * 60_000;
+    if (now < fireAt || now - fireAt > ALARM_GRACE_MS) continue;
+    out.push({ name, fireAt, prayerAt: at });
+  }
+  return out;
+}

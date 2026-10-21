@@ -24,7 +24,7 @@ import {
   REMINDER_SOUNDS,
   formatCountdown,
   nextPrayer,
-  playReminderSound,
+  playAlarmSound,
   prayerInstant,
   resolvePrayerLocation,
   shiftDateParts,
@@ -55,6 +55,7 @@ import {
   Vibrate,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
 
 const PRAYER_ARABIC: Record<PrayerName, string> = {
   fajr: "الفجر",
@@ -165,7 +166,10 @@ export default function Prayer() {
   };
 
   const testAlarm = () => {
-    playReminderSound(settings.reminders.sound);
+    playAlarmSound(settings.reminders.sound, {
+      volume: settings.reminders.volume,
+      adhanTrack: settings.reminders.adhanTrack,
+    });
     if (settings.reminders.vibrate) {
       try {
         navigator.vibrate?.([80, 60, 80]);
@@ -478,7 +482,7 @@ export default function Prayer() {
                 <Select
                   value={String(settings.reminders.leadMinutes)}
                   onValueChange={(v) =>
-                    update({ reminders: { leadMinutes: Number(v) as 0 | 5 | 10 } })
+                    update({ reminders: { leadMinutes: Number(v) as 0 | 5 | 10 | 15 } })
                   }
                 >
                   <SelectTrigger className={selectClass} aria-label="Alarm timing">
@@ -488,6 +492,7 @@ export default function Prayer() {
                     <SelectItem value="0">Exactly at prayer time</SelectItem>
                     <SelectItem value="5">5 minutes before</SelectItem>
                     <SelectItem value="10">10 minutes before</SelectItem>
+                    <SelectItem value="15">15 minutes before</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -510,9 +515,13 @@ export default function Prayer() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Two tones, both synthesized on your device — no streaming, so
-                  the alarm rings instantly and offline. Tap “Test alarm” to
-                  hear the selected one.
+                  The full adhan rings at prayer time (Fajr automatically gets
+                  the Fajr adhan); tones are synthesized offline. Open{" "}
+                  <Link className="font-medium text-primary hover:underline" to="/alarms">
+                    Prayer Alarm &amp; Adhan Settings
+                  </Link>{" "}
+                  for previews, recordings, volume, quiet hours and per-prayer
+                  control.
                 </p>
               </div>
 
@@ -551,9 +560,16 @@ export default function Prayer() {
                   variant="outline"
                   className="cursor-pointer gap-2"
                   onClick={testAlarm}
+                  disabled={settings.reminders.sound === "silent"}
                 >
                   <Vibrate className="size-4" />
                   Test alarm
+                </Button>
+                <Button variant="outline" className="cursor-pointer gap-2" asChild>
+                  <Link to="/alarms">
+                    <Bell className="size-4" />
+                    Prayer Alarm &amp; Adhan Settings
+                  </Link>
                 </Button>
                 <p className="text-xs leading-5 text-muted-foreground">
                   Alarms ring while the app is open (chosen sound plus a

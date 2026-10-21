@@ -1,7 +1,8 @@
 /**
- * Alarm tone selection (src/lib/prayerSettings.ts): exactly two selectable
- * tones, both synthesized (so neither can fail to ring), and a safe migration
- * from the v1 sound ids ("chime" | "adhan" | "silent") older builds stored.
+ * Alarm sound selection (src/lib/prayerSettings.ts): the five-entry library
+ * (full adhan, Fajr adhan, two synthesized tones, silent), a valid default,
+ * and a safe migration from every legacy sound id (v1 "chime" and the
+ * two-tone era's "bells" | "melody").
  * Run with: bun test
  */
 import { beforeEach, describe, expect, test } from "bun:test";
@@ -25,23 +26,42 @@ const SETTINGS_KEY = "noor:prayerSettings";
 
 beforeEach(() => store.clear());
 
-describe("alarm tone picker", () => {
-  test("offers exactly two selections with stable ids", () => {
-    expect(REMINDER_SOUNDS.map((s) => s.id)).toEqual(["bells", "melody"]);
-    expect(REMINDER_SOUNDS.map((s) => s.label)).toEqual(["Serene bells", "Soft melody"]);
+describe("alarm sound picker", () => {
+  test("offers the full library with stable ids", () => {
+    expect(REMINDER_SOUNDS.map((s) => s.id)).toEqual([
+      "adhan",
+      "fajr-adhan",
+      "bells",
+      "melody",
+      "silent",
+    ]);
+    // Remote entries are exactly the adhan recordings; tones are offline.
+    expect(REMINDER_SOUNDS.filter((s) => s.remote).map((s) => s.id)).toEqual([
+      "adhan",
+      "fajr-adhan",
+    ]);
   });
 
-  test("the default tone is one of the two selections", () => {
+  test("every entry is labelled and described — no blank picker rows", () => {
+    for (const s of REMINDER_SOUNDS) {
+      expect(s.label.length).toBeGreaterThan(0);
+      expect(s.description.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("the default selection is part of the library", () => {
     const ids = REMINDER_SOUNDS.map((s) => s.id);
     expect(ids).toContain(DEFAULT_PRAYER_SETTINGS.reminders.sound);
   });
 });
 
-describe("sound migration from v1", () => {
-  for (const legacy of ["chime", "adhan", "silent"] as const) {
-    test(`legacy “${legacy}” falls back to the default tone`, () => {
+describe("sound migration across versions", () => {
+  for (const legacy of ["chime", "silent"] as const) {
+    test(`legacy “${legacy}” maps to a current selection`, () => {
       store.set(SETTINGS_KEY, JSON.stringify({ reminders: { sound: legacy } }));
-      expect(loadPrayerSettings().reminders.sound).toBe(DEFAULT_PRAYER_SETTINGS.reminders.sound);
+      const sound = loadPrayerSettings().reminders.sound;
+      expect(REMINDER_SOUNDS.map((s) => s.id)).toContain(sound);
+      expect(sound).toBe(legacy === "chime" ? "bells" : "silent");
     });
   }
 

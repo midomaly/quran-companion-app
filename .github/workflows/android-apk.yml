@@ -81,7 +81,9 @@ jobs:
   build-apk:
     name: Build APK (Bubblewrap TWA)
     needs: deploy-site
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest migrated to Ubuntu 26 on 2026-10-19 mid-build;
+    # 24.04 has the same preinstalled Android SDK and keeps builds reproducible.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -90,7 +92,9 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
+      # v4 installs the Android cmdline-tools without Google's retired `tools`
+      # package (v3's sdkmanager call fails on it) and runs on Node 24.
+      - uses: android-actions/setup-android@v4
 
       - name: Point Bubblewrap at the runner's JDK + SDK (skips first-run prompts)
         run: |

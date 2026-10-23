@@ -96,11 +96,27 @@ jobs:
       # package (v3's sdkmanager call fails on it) and runs on Node 24.
       - uses: android-actions/setup-android@v4
 
-      - name: Point Bubblewrap at the runner's JDK + SDK (skips first-run prompts)
+      - name: Point Bubblewrap at the runner JDK and Android SDK
         run: |
           mkdir -p ~/.bubblewrap
-          JDK="$(dirname "$(dirname "$(readlink -f "$(which java)")")")"
-          printf '{"jdkPath":"%s","androidSdkPath":"%s"}\n' "$JDK" "$ANDROID_HOME" \
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            echo "::error::Android SDK root not found (ANDROID_HOME='$ANDROID_HOME', ANDROID_SDK_ROOT='$ANDROID_SDK_ROOT')"
+            exit 1
+          fi
+          # Bubblewrap only accepts an SDK root containing `tools/` or `bin/`
+          # (AndroidSdkTools.validatePath — otherwise: "The provided androidSdk
+          # isn't correct."). Hosted images keep everything under
+          # cmdline-tools/<version>/, so expose it at the root with a symlink.
+          if [ ! -e "$SDK/bin" ] && [ ! -e "$SDK/tools" ]; then
+            SDK_BIN="$(find "$SDK/cmdline-tools" -maxdepth 3 -name sdkmanager -printf '%h\n' 2>/dev/null | head -1)"
+            if [ -z "$SDK_BIN" ]; then
+              echo "::error::No bin/sdkmanager found under $SDK/cmdline-tools"
+              exit 1
+            fi
+            ln -s "$SDK_BIN" "$SDK/bin" || sudo ln -s "$SDK_BIN" "$SDK/bin"
+          fi
+          printf '{"jdkPath":"%s","androidSdkPath":"%s"}\n' "$JAVA_HOME" "$SDK" \
             > ~/.bubblewrap/config.json
           cat ~/.bubblewrap/config.json
 

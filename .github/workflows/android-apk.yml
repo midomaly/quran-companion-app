@@ -96,29 +96,42 @@ jobs:
       # package (v3's sdkmanager call fails on it) and runs on Node 24.
       - uses: android-actions/setup-android@v4
 
-      - name: Point Bubblewrap at the runner JDK and Android SDK
+      # Bubblewrap rejects any androidSdkPath without tools/ or bin/ ("The provided
+      # androidSdk isn't correct.") and runs Gradle with ANDROID_HOME set to that
+      # same path, so it must be a *complete* SDK root. setup-android@v4 only
+      # guarantees cmdline-tools/<ver>/ inside the runner's SDK, so build a
+      # Home-owned view of the runner's SDK (cmdline bin/ + links to platforms,
+      # build-tools, licenses, ...), let Bubblewrap persist the config itself via
+      # `updateConfig`, and gate on `bubblewrap doctor` before the slow steps.
+      - name: Prepare Android SDK for Bubblewrap and verify with doctor
         run: |
-          mkdir -p ~/.bubblewrap
-          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+          REAL="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          if [ -z "$REAL" ] || [ ! -d "$REAL" ]; then
             echo "::error::Android SDK root not found (ANDROID_HOME='$ANDROID_HOME', ANDROID_SDK_ROOT='$ANDROID_SDK_ROOT')"
             exit 1
           fi
-          # Bubblewrap only accepts an SDK root containing `tools/` or `bin/`
-          # (AndroidSdkTools.validatePath — otherwise: "The provided androidSdk
-          # isn't correct."). Hosted images keep everything under
-          # cmdline-tools/<version>/, so expose it at the root with a symlink.
-          if [ ! -e "$SDK/bin" ] && [ ! -e "$SDK/tools" ]; then
-            SDK_BIN="$(find "$SDK/cmdline-tools" -maxdepth 3 -name sdkmanager -printf '%h\n' 2>/dev/null | head -1)"
-            if [ -z "$SDK_BIN" ]; then
-              echo "::error::No bin/sdkmanager found under $SDK/cmdline-tools"
-              exit 1
-            fi
-            ln -s "$SDK_BIN" "$SDK/bin" || sudo ln -s "$SDK_BIN" "$SDK/bin"
+          CMD_BIN="$(find "$REAL/cmdline-tools" -maxdepth 3 -name sdkmanager -printf '%h\n' 2>/dev/null | head -1)"
+          if [ -z "$CMD_BIN" ]; then
+            echo "::error::No bin/sdkmanager under $REAL/cmdline-tools (setup-android@v4 installs it there)"
+            exit 1
           fi
-          printf '{"jdkPath":"%s","androidSdkPath":"%s"}\n' "$JAVA_HOME" "$SDK" \
-            > ~/.bubblewrap/config.json
-          cat ~/.bubblewrap/config.json
+          SDK="$HOME/android-sdk"
+          mkdir -p "$SDK" ~/.bubblewrap
+          ln -sfn "$CMD_BIN" "$SDK/bin"
+          for d in cmdline-tools platform-tools platforms build-tools licenses emulator ndk extras tools; do
+            if [ -e "$REAL/$d" ]; then
+              ln -sfn "$REAL/$d" "$SDK/$d"
+            fi
+          done
+          if [ -e "$REAL/repositories.cfg" ]; then
+            ln -sfn "$REAL/repositories.cfg" "$SDK/repositories.cfg"
+          fi
+          # updateConfig prompts interactively when config.json is missing, so seed
+          # the file first; the paths are then persisted by Bubblewrap's own code.
+          printf '{"jdkPath":"%s","androidSdkPath":"%s"}\n' "$JAVA_HOME" "$SDK" > ~/.bubblewrap/config.json
+          npm i -g @bubblewrap/cli
+          bubblewrap updateConfig --jdkPath "$JAVA_HOME" --androidSdkPath "$SDK"
+          bubblewrap doctor
 
       - name: Signing key (uses KEYSTORE_BASE64 when set, otherwise generates one)
         env:
@@ -149,10 +162,8 @@ jobs:
               android/twa-manifest.template.json > twa-manifest.json
           jq . twa-manifest.json > /dev/null
 
-      - name: Install Bubblewrap and generate the Android project
-        run: |
-          npm i -g @bubblewrap/cli
-          bubblewrap update --skipVersionUpgrade
+      - name: Generate the Android project (bubblewrap update)
+        run: bubblewrap update --skipVersionUpgrade
 
       - name: Build the signed APK
         env:

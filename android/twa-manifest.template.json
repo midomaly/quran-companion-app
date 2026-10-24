@@ -39,5 +39,9 @@
     }
   ],
   "additionalTrustedOrigins": [],
-  "retainedBundles": []
+  "retainedBundles": [],
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  }
 }
